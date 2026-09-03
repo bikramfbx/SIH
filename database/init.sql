@@ -32,3 +32,23 @@ CREATE UNIQUE INDEX idx_hotspots_no_duplicates ON hotspots (
     acq_date,
     acq_time
 );
+
+CREATE TABLE industrial_facilities (
+    id              BIGSERIAL PRIMARY KEY,
+    osm_type        TEXT NOT NULL,
+    osm_id          BIGINT NOT NULL,
+    name            TEXT,
+    facility_type   TEXT NOT NULL,
+    tags            JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source          TEXT NOT NULL DEFAULT 'osm/overpass',
+    geometry        GEOMETRY(Geometry, 4326),
+    location        GEOGRAPHY(Point, 4326),
+    first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_facilities_osm_identity ON industrial_facilities (osm_type, osm_id);
+CREATE INDEX idx_facilities_geometry ON industrial_facilities USING GIST (geometry);
+CREATE INDEX idx_facilities_location ON industrial_facilities USING GIST (location);
+CREATE INDEX idx_facilities_facility_type ON industrial_facilities (facility_type);
+
