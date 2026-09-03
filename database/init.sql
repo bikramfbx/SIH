@@ -25,6 +25,8 @@ CREATE INDEX idx_hotspots_location ON hotspots USING GIST (location);
 CREATE INDEX idx_hotspots_acq_date ON hotspots (acq_date);
 
 CREATE UNIQUE INDEX idx_hotspots_no_duplicates ON hotspots (
+    source,
+    satellite,
     ROUND(CAST(latitude AS numeric), 4),
     ROUND(CAST(longitude AS numeric), 4),
     acq_date,
