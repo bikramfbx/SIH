@@ -8,8 +8,7 @@ import psycopg
 import requests
 from dotenv import load_dotenv
 
-FIRMS_API_URL = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
-
+FIRMS_API_URL = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{key}/{source}/{areas}/{days}"
 DEFAULT_SOURCE = "VIIRS_NOAA20_NRT"
 DEFAULT_BBOX = "68,6,98,38"
 DEFAULT_DAYS = 2
@@ -36,13 +35,8 @@ INSERT INTO hotspots (
 
 
 def fetch_firms_csv(map_key, source, bbox, days):
-    params = {
-        "source": source,
-        "areas": bbox,
-        "days": days,
-        "api_key": map_key,
-    }
-    resp = requests.get(FIRMS_API_URL, params=params, timeout=60)
+    url = FIRMS_API_URL.format(key=map_key, source=source, areas=bbox, days=days)
+    resp = requests.get(url, timeout=60)
     try:
         resp.raise_for_status()
     except requests.exceptions.HTTPError:
