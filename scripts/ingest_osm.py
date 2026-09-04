@@ -73,13 +73,18 @@ import psycopg
 import requests
 from dotenv import load_dotenv
 
+# Mirrors are tried in order until one returns a parseable response.
+# `overpass-api.de` is the long-lived reference endpoint and is tried before
+# the community mirrors, which are frequently overloaded or hang for seconds
+# to minutes. The `DEFAULT_TIMEOUT` bounds per-request HTTP read time so a
+# stuck mirror does not stall the whole retry loop.
 OVERPASS_URLS = [
     u
     for u in (
         os.getenv("OVERPASS_URL"),
+        "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
         "https://overpass.private.coffee/api/interpreter",
-        "https://overpass-api.de/api/interpreter",
     )
     if u
 ]
@@ -88,7 +93,8 @@ USER_AGENT = "SIH-Industrial-Ingest/0.1 (+https://github.com/bikramfbx/SIH)"
 
 DEFAULT_BBOX = "68,6,98,38"
 DEFAULT_CHUNKS = 1
-DEFAULT_TIMEOUT = 120
+DEFAULT_TIMEOUT = 60
+CONNECT_TIMEOUT = 10
 MAX_RETRIES = 3
 BACKOFF_BASE = 5
 
@@ -170,7 +176,10 @@ def query_overpass(query, retries=MAX_RETRIES, timeout=DEFAULT_TIMEOUT):
         for url in OVERPASS_URLS:
             try:
                 resp = requests.post(
-                    url, data={"data": query}, timeout=timeout, headers=headers
+                    url,
+                    data={"data": query},
+                    timeout=(CONNECT_TIMEOUT, timeout),
+                    headers=headers,
                 )
                 if resp.status_code == 400:
                     body = " ".join(resp.text.split())[:200]
@@ -366,7 +375,16 @@ def main():
         for tile in tiles:
             query = build_query(tile)
             print(f"\n--- tile {tile} ---")
-            data = query_overpass(query)
+            try:
+                data = query_overpass(query)
+            except RuntimeError as e:
+                print(f"ERROR: {e}", file=sys.stderr)
+                print(
+                    "Overpass is unreachable. This is an external-service "
+                    "limitation; no tile data was committed for this run.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
             elems = data.get("elements", [])
             total_returned += len(elems)
 
