@@ -111,8 +111,31 @@ SELECTED_TAGS = [
 ]
 
 
+def parse_bbox(bbox):
+    try:
+        west, south, east, north = (float(v) for v in bbox.split(","))
+    except (ValueError, AttributeError) as e:
+        raise ValueError(
+            f"bbox must be 'west,south,east,north', got {bbox!r}"
+        ) from e
+    if not (-180 <= west <= 180) or not (-180 <= east <= 180):
+        raise ValueError(f"west/east must be within [-180, 180], got {bbox!r}")
+    if not (-90 <= south <= 90) or not (-90 <= north <= 90):
+        raise ValueError(f"south/north must be within [-90, 90], got {bbox!r}")
+    if not (west < east):
+        raise ValueError(f"west must be < east, got {bbox!r}")
+    if not (south < north):
+        raise ValueError(f"south must be < north, got {bbox!r}")
+    return west, south, east, north
+
+
+def to_overpass_bbox(bbox):
+    west, south, east, north = parse_bbox(bbox)
+    return f"{south:.6f},{west:.6f},{north:.6f},{east:.6f}"
+
+
 def build_query(bbox):
-    bbox_str = f"({bbox})"
+    bbox_str = f"({to_overpass_bbox(bbox)})"
     queries = "".join(f"  {tag}{bbox_str};\n" for tag in SELECTED_TAGS)
     return (
         "[out:json][timeout:60];\n"
@@ -124,7 +147,7 @@ def build_query(bbox):
 
 
 def area_tiles(bbox, chunks):
-    west, south, east, north = (float(v) for v in bbox.split(","))
+    west, south, east, north = parse_bbox(bbox)
     if chunks <= 1:
         return [f"{west},{south},{east},{north}"]
     lat_step = (north - south) / chunks
@@ -149,6 +172,11 @@ def query_overpass(query, retries=MAX_RETRIES, timeout=DEFAULT_TIMEOUT):
                 resp = requests.post(
                     url, data={"data": query}, timeout=timeout, headers=headers
                 )
+                if resp.status_code == 400:
+                    body = " ".join(resp.text.split())[:200]
+                    raise RuntimeError(
+                        f"Overpass returned HTTP 400 (malformed request): {body}"
+                    )
                 if resp.status_code in (429, 502, 504, 406):
                     body = " ".join(resp.text.split())[:120]
                     print(
@@ -311,6 +339,12 @@ def main():
 
     bbox = os.getenv("OSM_BBOX", DEFAULT_BBOX)
     chunks = int(os.getenv("OSM_CHUNKS", DEFAULT_CHUNKS))
+
+    try:
+        parse_bbox(bbox)
+    except ValueError as e:
+        print(f"ERROR: invalid OSM_BBOX: {e}", file=sys.stderr)
+        sys.exit(1)
 
     conn_info = {
         "dbname": os.getenv("POSTGRES_DB"),
