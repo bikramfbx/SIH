@@ -131,17 +131,111 @@ def fetch_context_for_hotspot(conn, hot, radius_m, max_retries, http_timeout):
     return 1, len(elems), inserted, updated
 
 
+def _load_context_config():
+    return {
+        "radius_m": float(os.getenv("OSM_CONTEXT_RADIUS_M", DEFAULT_CONTEXT_RADIUS_M)),
+        "min_interval": float(os.getenv("OSM_CONTEXT_MIN_INTERVAL_S", DEFAULT_MIN_INTERVAL_S)),
+        "max_retries": int(os.getenv("OSM_CONTEXT_MAX_RETRIES", DEFAULT_MAX_RETRIES)),
+        "max_failures": int(os.getenv("OSM_CONTEXT_MAX_FAILURES", DEFAULT_MAX_FAILURES)),
+        "cache_override": float(os.getenv(
+            "OSM_CONTEXT_CACHE_OVERRIDE_C", DEFAULT_CACHE_OVERRIDE_RADIUS_M)),
+        "http_timeout": float(os.getenv("OSM_HTTP_TIMEOUT", DEFAULT_HTTP_TIMEOUT)),
+    }
+
+
+def process_hotspot_context(conn, hotspots, cfg):
+    """Fetch context for hotspots not already covered by the query cache.
+
+    Sequential + conservative (over Overpass's public API); skips cached
+    neighbourhoods; stops when ``max_failures`` hotspots fail consecutively.
+    Never raises: per-hotspot failures are counted and logged.
+    Returns a summary dict.
+    """
+    radius_m = cfg["radius_m"]
+    min_interval = cfg["min_interval"]
+    max_retries = cfg["max_retries"]
+    max_failures = cfg["max_failures"]
+    cache_override = cfg["cache_override"]
+    http_timeout = cfg["http_timeout"]
+    cover_dist = cache_override if cache_override > 0 else radius_m
+
+    n_queries = n_skipped_cached = n_failed = n_returned = n_inserted = n_updated = 0
+    total = len(hotspots)
+    for i, (hid, lat, lon) in enumerate(hotspots, 1):
+        if area_covered(conn, lat, lon, cover_dist):
+            n_skipped_cached += 1
+            continue
+        try:
+            q, ret, ins, upd = fetch_context_for_hotspot(
+                conn, {"latitude": lat, "longitude": lon},
+                radius_m, max_retries, http_timeout)
+            record_query(conn, lat, lon, radius_m, 0)
+            conn.commit()
+        except RuntimeError as e:
+            conn.rollback()
+            n_failed += 1
+            print(f"[{i}/{total}] hotspot {hid}: Overpass failed ({e}); "
+                  f"skipping (consecutive failures {n_failed})", file=sys.stderr)
+            if n_failed >= max_failures:
+                print(f"WARNING: {max_failures} hotspots failed in a row; "
+                      f"stopping context refresh.", file=sys.stderr)
+                break
+            time.sleep(min_interval)
+            continue
+        except Exception:
+            conn.rollback()
+            raise
+        n_queries += q
+        n_returned += ret
+        n_inserted += ins
+        n_updated += upd
+        print(f"[{i}/{total}] hotspot {hid} ({lat:.4f},{lon:.4f}): "
+              f"ret={ret:3d} ins={ins:3d} upd={upd:3d}", flush=True)
+        time.sleep(min_interval)
+
+    return {
+        "hotspots": total,
+        "skipped_cached": n_skipped_cached,
+        "queries": n_queries,
+        "failed": n_failed,
+        "returned": n_returned,
+        "inserted": n_inserted,
+        "updated": n_updated,
+    }
+
+
+def process_new_hotspot_context(conn, conn_info):
+    """Opt-in worker hook: fetch OSM context for new hotspots missing coverage.
+
+    Overpass stays OFF the live path: this is only invoked by worker.py when
+    WORKER_OSM_CONTEXT=1, and every neighbourhood already in the query cache is
+    skipped (no repeated queries). Returns a summary dict.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT h.id, h.latitude, h.longitude
+            FROM hotspots h
+            WHERE NOT EXISTS (
+                SELECT 1 FROM osm_query_cache c
+                WHERE ST_DWithin(
+                    h.location,
+                    CAST(ST_SetSRID(ST_MakePoint(c.center_lon, c.center_lat), 4326)
+                         AS geography),
+                    %s
+                )
+            )
+            ORDER BY h.ingested_at DESC
+            LIMIT %s
+        """, (32000, 50))
+        hotspots = cur.fetchall()
+    if not hotspots:
+        return {"hotspots": 0}
+    return process_hotspot_context(conn, hotspots, _load_context_config())
+
+
 def main():
     load_dotenv()
-
-    radius_m = float(os.getenv("OSM_CONTEXT_RADIUS_M", DEFAULT_CONTEXT_RADIUS_M))
-    min_interval = float(os.getenv("OSM_CONTEXT_MIN_INTERVAL_S", DEFAULT_MIN_INTERVAL_S))
-    max_retries = int(os.getenv("OSM_CONTEXT_MAX_RETRIES", DEFAULT_MAX_RETRIES))
-    max_failures = int(os.getenv("OSM_CONTEXT_MAX_FAILURES", DEFAULT_MAX_FAILURES))
-    cache_override = float(
-        os.getenv("OSM_CONTEXT_CACHE_OVERRIDE_C", DEFAULT_CACHE_OVERRIDE_RADIUS_M)
-    )
-    http_timeout = float(os.getenv("OSM_HTTP_TIMEOUT", DEFAULT_HTTP_TIMEOUT))
+    cfg = _load_context_config()
 
     conn_info = {
         "dbname": os.getenv("POSTGRES_DB"),
@@ -154,74 +248,24 @@ def main():
     with psycopg.connect(**conn_info) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, latitude, longitude, acq_date FROM hotspots ORDER BY acq_date, id"
+                "SELECT id, latitude, longitude FROM hotspots ORDER BY acq_date, id"
             )
             hotspots = cur.fetchall()
 
         print(f"Hotspots to process: {len(hotspots)} "
-              f"(radius={radius_m:.0f}m, max_retries={max_retries})")
+              f"(radius={cfg['radius_m']:.0f}m, "
+              f"max_retries={cfg['max_retries']})")
 
-        n_queries = 0
-        n_skipped_cached = 0
-        n_failed = 0
-        n_returned = 0
-        n_inserted = 0
-        n_updated = 0
-
-        for i, (hid, lat, lon, _date) in enumerate(hotspots, 1):
-            cover_dist = cache_override if cache_override > 0 else radius_m
-            if area_covered(conn, lat, lon, cover_dist):
-                n_skipped_cached += 1
-                continue
-
-            try:
-                q, ret, ins, upd = fetch_context_for_hotspot(
-                    conn,
-                    {"latitude": lat, "longitude": lon},
-                    radius_m,
-                    max_retries,
-                    http_timeout,
-                )
-                record_query(conn, lat, lon, radius_m, 0)
-                conn.commit()
-            except RuntimeError as e:
-                conn.rollback()
-                n_failed += 1
-                print(
-                    f"[{i}/{len(hotspots)}] hotspot {hid} Failed ({e}); "
-                    f"giving up on this hotspot (total failures {n_failed})",
-                    file=sys.stderr,
-                )
-                if n_failed >= max_failures:
-                    print(
-                        f"ERROR: {max_failures} hotspots failed in a row; aborting.",
-                        file=sys.stderr,
-                    )
-                    sys.exit(2)
-                time.sleep(min_interval)
-                continue
-            except Exception:
-                conn.rollback()
-                raise
-
-            n_queries += q
-            n_returned += ret
-            n_inserted += ins
-            n_updated += upd
-            print(
-                f"[{i}/{len(hotspots)}] hotspot {hid} ({lat:.4f},{lon:.4f}): "
-                f"ret={ret:3d} ins={ins:3d} upd={upd:3d}",
-                flush=True,
-            )
-            time.sleep(min_interval)
+        summary = process_hotspot_context(conn, hotspots, cfg)
 
     print("\n--- Facility Context Summary ---")
-    print(f"Hotspots skipped (cached):  {n_skipped_cached}")
-    print(f"Overpass queries run:       {n_queries}")
-    print(f"Hotspots failed:            {n_failed}")
-    print(f"OSM objects returned:       {n_returned}")
-    print(f"Facilities inserted:        {n_inserted}")
-    print(f"Facilities updated:         {n_updated}")
+    print(f"Hotspots in scope:          {summary['hotspots']}")
+    print(f"Hotspots skipped (cached):  {summary['skipped_cached']}")
+    print(f"Overpass queries run:       {summary['queries']}")
+    print(f"Hotspots failed:            {summary['failed']}")
+    print(f"OSM objects returned:       {summary['returned']}")
+    print(f"Facilities inserted:        {summary['inserted']}")
+    print(f"Facilities updated:         {summary['updated']}")
 
 
 if __name__ == "__main__":

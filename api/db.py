@@ -6,7 +6,13 @@ import os
 import psycopg
 from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    load_dotenv()
+except Exception:
+    # python-dotenv can raise under some Python versions when invoked at odd
+    # call depths; env vars are also injected by docker-compose, so a failure
+    # to find a local .env is not fatal.
+    pass
 
 
 def connection_params():
