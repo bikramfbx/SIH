@@ -7,12 +7,12 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root {
-    --bg:        #0a0b0d;
-    --panel:     rgba(10, 11, 13, 0.94);
-    --hairline:  rgba(255, 255, 255, 0.09);
-    --ink:       #e6e1cf;
-    --dim:       #8b8b85;
-    --faint:     #5c5c57;
+    --bg:        #080b14;
+    --panel:     rgba(10, 15, 28, 0.94);
+    --hairline:  rgba(150, 175, 220, 0.13);
+    --ink:       #e6e9f4;
+    --dim:       #93a0b8;
+    --faint:     #5c6b85;
     --accent:    #ffd700;
     --fire:      #ff4444;
     --flare:     #00bfff;
@@ -32,10 +32,11 @@
   }
   #map { position: absolute; inset: 0; background: var(--bg); }
 
-  /* Deepen Esri's gray canvas toward CARTO's near-black 'dark matter' finish.
-     Applied only to the base tiles; the label overlay stays crisp. */
+  /* Deepen and blue-shift Esri's gray canvas: near-black naval backdrop with
+     a faint cool tint. Applied only to the base tiles; the label overlay
+     stays crisp. sepia+hue-rotate bends the neutral grays toward a dark blue. */
   .tile-dark .leaflet-tile {
-    filter: brightness(0.6) contrast(1.1) saturate(0.85);
+    filter: brightness(0.55) contrast(1.08) sepia(0.45) hue-rotate(200deg) saturate(1.6);
   }
 
   /* ---------- HUD (left command panel) ---------- */
@@ -53,7 +54,7 @@
   #hud .mark  {
     width: 30px; height: 30px; flex: 0 0 30px;
     display: grid; place-items: center;
-    background: var(--accent); color: #0a0b0d;
+    background: var(--accent); color: #0a1220;
     font-weight: 700; font-size: 14px;
   }
   #hud h1 { margin: 0; font-size: 14px; letter-spacing: 0.14em; color: var(--ink); }
@@ -83,7 +84,7 @@
   #hud label { font-size: 10px; color: var(--dim); letter-spacing: 0.14em; margin-top: 10px; display: block; }
   select#window {
     width: 100%; margin-top: 4px; padding: 5px 6px;
-    background: #101214; color: var(--ink);
+    background: #0d1526; color: var(--ink);
     border: 1px solid var(--hairline);
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
   }
@@ -104,7 +105,7 @@
   /* ---------- Spike markers ---------- */
   .spike { display: flex; flex-direction: column; align-items: center; width: 220px; }
   .spike-label {
-    background: rgba(8, 8, 10, 0.92);
+    background: rgba(10, 16, 30, 0.94);
     border: 1px solid var(--accent); color: var(--accent);
     padding: 3px 8px; font-size: 11px;
     font-family: var(--mono); font-weight: 700;
@@ -133,12 +134,12 @@
 
   /* ---------- Popup ---------- */
   .leaflet-popup-content-wrapper {
-    background: rgba(10, 11, 13, 0.97); color: var(--ink);
+    background: rgba(10, 16, 30, 0.97); color: var(--ink);
     border: 1px solid rgba(255, 215, 0, 0.5);
     border-radius: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em;
     box-shadow: 0 0 18px rgba(0,0,0,0.7);
   }
-  .leaflet-popup-tip { background: rgba(10, 11, 13, 0.97); border: 1px solid rgba(255,215,0,0.5); }
+  .leaflet-popup-tip { background: rgba(10, 16, 30, 0.97); border: 1px solid rgba(255,215,0,0.5); }
   .leaflet-popup-content { margin: 10px 12px; line-height: 1.5; max-height: 46vh; overflow-y: auto; }
   #pop { min-width: 220px; }
   #pop .cls { font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; font-size: 12px; }
