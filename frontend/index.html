@@ -3,189 +3,515 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SIH — Thermal Anomaly MVP</title>
+<title>SIH · THERMAL ANOMALY MONITOR</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root {
-    --industrial-fire: #d32f2f;
-    --persistent-industrial-source: #fb8c00;
-    --gas-flare: #fbc02d;
-    --non-industrial: #2e7d32;
-    --unknown: #616161;
-    --unclassified: #9e9e9e;
+    --bg:        #0a0b0d;
+    --panel:     rgba(10, 11, 13, 0.94);
+    --hairline:  rgba(255, 255, 255, 0.09);
+    --ink:       #e6e1cf;
+    --dim:       #8b8b85;
+    --faint:     #5c5c57;
+    --accent:    #ffd700;
+    --fire:      #ff4444;
+    --flare:     #00bfff;
+    --persist:   #ffd700;
+    --biomass:   #ff8c00;
+    --none:      #7a7a7a;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; background: #f5f5f5; }
-  #map { position: absolute; inset: 0 0 0 320px; }
-  #sidebar {
-    position: absolute; top: 0; left: 0; bottom: 0; width: 320px;
-    background: #fff; border-right: 1px solid #ddd; overflow-y: auto; padding: 16px;
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
   }
-  h1 { font-size: 17px; margin: 0 0 4px; }
-  .sub { color: #666; font-size: 12px; margin-bottom: 12px; }
-  .stats { font-size: 12px; color: #333; margin-bottom: 14px; line-height: 1.6; }
-  .stats b { color: #111; }
-  .filters { margin-bottom: 14px; }
-  .filters button {
-    display: inline-block; margin: 2px; padding: 4px 10px; font-size: 12px;
-    border: 1px solid #ccc; border-radius: 14px; cursor: pointer; background: #fff;
+  #map { position: absolute; inset: 0; background: var(--bg); }
+
+  /* ---------- HUD (left command panel) ---------- */
+  #hud {
+    position: absolute; top: 14px; left: 14px; z-index: 1000;
+    width: 282px;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-left: 3px solid var(--accent);
+    padding: 14px 14px 10px;
+    box-shadow: 0 0 24px rgba(0,0,0,0.55);
+    user-select: none;
   }
-  .filters button.active { color: #fff; border-color: #333; background: #333; }
-  .filters button .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
-  .legend { font-size: 12px; color: #555; margin-bottom: 14px; }
-  .legend div { margin: 3px 0; }
-  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
-  #detail { font-size: 13px; }
-  #detail h2 { font-size: 14px; margin: 6px 0; }
-  #detail .row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed #eee; }
-  #detail .row span:first-child { color: #666; }
-  #detail .reasons { margin-top: 8px; padding-left: 16px; color: #333; }
-  #detail .reasons li { margin: 3px 0; }
-  .badge {
-    display: inline-block; padding: 2px 9px; border-radius: 12px; color: #fff; font-size: 11px; font-weight: 600;
+  #hud .head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  #hud .mark  {
+    width: 30px; height: 30px; flex: 0 0 30px;
+    display: grid; place-items: center;
+    background: var(--accent); color: #0a0b0d;
+    font-weight: 700; font-size: 14px;
   }
-  .empty { color: #999; font-size: 12px; }
-  .leaflet-popup-content { max-width: 260px; }
-  .leaflet-popup-content .p { margin: 2px 0; font-size: 12px; }
+  #hud h1 { margin: 0; font-size: 14px; letter-spacing: 0.14em; color: var(--ink); }
+  #hud .sub { margin: 1px 0 0; font-size: 10px; color: var(--faint); letter-spacing: 0.18em; }
+
+  #hud .sec { font-size: 10px; letter-spacing: 0.16em; color: var(--faint); margin: 12px 0 6px; }
+
+  #totals { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  #totals .cell { border: 1px solid var(--hairline); padding: 6px 8px; }
+  #totals .cell .n { font-size: 18px; font-weight: 700; line-height: 1.1; }
+  #totals .cell .l { font-size: 9px; color: var(--dim); letter-spacing: 0.12em; }
+
+  #classes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  #classes .chip {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 7px; cursor: pointer;
+    border: 1px solid var(--hairline); background: transparent; color: var(--ink);
+    font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  #classes .chip:hover { border-color: rgba(255,255,255,0.3); }
+  #classes .chip.off { opacity: 0.32; text-decoration: line-through; }
+  #classes .chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; background: var(--dot, var(--none)); box-shadow: 0 0 6px var(--dot, transparent); }
+  #classes .chip .n { margin-left: auto; color: var(--dim); font-size: 10px; }
+
+  #hud .row { display: flex; align-items: center; gap: 8px; }
+  #hud label { font-size: 10px; color: var(--dim); letter-spacing: 0.14em; margin-top: 10px; display: block; }
+  select#window {
+    width: 100%; margin-top: 4px; padding: 5px 6px;
+    background: #101214; color: var(--ink);
+    border: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+  }
+  select#window:focus { outline: 1px solid var(--accent); }
+
+  #status {
+    margin-top: 12px; padding-top: 8px;
+    border-top: 1px solid var(--hairline);
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    font-size: 10px; color: var(--dim);
+  }
+  #status .live { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #live-dot { width: 7px; height: 7px; border-radius: 50%; background: #3fb950; box-shadow: 0 0 6px #3fb950; }
+  #status.ok #live-dot { background: #3fb950; box-shadow: 0 0 6px #3fb950; }
+  #status.warn #live-dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  #status.err  #live-dot { background: var(--fire); box-shadow: 0 0 6px var(--fire); }
+
+  /* ---------- Spike markers ---------- */
+  .spike { display: flex; flex-direction: column; align-items: center; width: 220px; }
+  .spike-label {
+    background: rgba(8, 8, 10, 0.92);
+    border: 1px solid var(--accent); color: var(--accent);
+    padding: 3px 8px; font-size: 11px;
+    font-family: var(--mono); font-weight: 700;
+    white-space: nowrap; text-transform: uppercase; letter-spacing: 0.08em;
+    box-shadow: 0 0 8px rgba(0,0,0,0.6);
+  }
+  .spike-line { width: 2px; height: 38px; background: var(--accent); box-shadow: 0 0 4px rgba(255,215,0,0.5); }
+  .spike-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--fire); border: 1px solid var(--accent);
+    box-shadow: 0 0 8px rgba(255,68,68,0.85);
+  }
+  .spike-dot.pulse { animation: s-pulse 1.6s ease-out infinite; }
+  @keyframes s-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255,68,68,0.55); }
+    70%  { box-shadow: 0 0 0 7px rgba(255,68,68,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); }
+  }
+  .spike-label.gas_flare            { border-color: var(--flare); color: var(--flare); }
+  .spike-label.gas_flare + .spike-line { background: var(--flare); box-shadow: 0 0 4px rgba(0,191,255,0.5); }
+  .spike-label.industrial_fire      { border-color: var(--fire); color: var(--fire); }
+  .spike-label.industrial_fire + .spike-line { background: var(--fire); box-shadow: 0 0 4px rgba(255,68,68,0.5); }
+  .spike-label.persistent_industrial_source { border-color: var(--persist); color: var(--persist); }
+  .spike-label.persistent_industrial_source + .spike-line { background: var(--persist); box-shadow: 0 0 4px rgba(255,215,0,0.5); }
+  .spike-dot.gas_flare, .spike-dot.industrial_fire { animation: s-pulse 1.6s ease-out infinite; }
+
+  /* ---------- Popup ---------- */
+  .leaflet-popup-content-wrapper {
+    background: rgba(10, 11, 13, 0.97); color: var(--ink);
+    border: 1px solid rgba(255, 215, 0, 0.5);
+    border-radius: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em;
+    box-shadow: 0 0 18px rgba(0,0,0,0.7);
+  }
+  .leaflet-popup-tip { background: rgba(10, 11, 13, 0.97); border: 1px solid rgba(255,215,0,0.5); }
+  .leaflet-popup-content { margin: 10px 12px; line-height: 1.5; max-height: 46vh; overflow-y: auto; }
+  #pop { min-width: 220px; }
+  #pop .cls { font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; font-size: 12px; }
+  #pop .code { color: var(--dim); font-size: 9px; letter-spacing: 0.14em; margin-bottom: 8px; }
+  #pop table { width: 100%; border-collapse: collapse; }
+  #pop td { padding: 2px 0; vertical-align: top; }
+  #pop td.k { color: var(--dim); padding-right: 10px; white-space: nowrap; }
+  #pop td.v { text-align: right; color: var(--ink); }
+  #pop .reason { border-top: 1px dashed var(--hairline); margin-top: 8px; padding-top: 7px; }
+  #pop .reason div { font-size: 10px; color: var(--dim); padding: 1px 0; }
+  #pop .reason div::before { content: "· "; color: var(--accent); }
+
+  /* ---------- Loading / toasts ---------- */
+  #loading {
+    position: absolute; right: 16px; top: 14px; z-index: 1000;
+    display: none; align-items: center; gap: 8px;
+    padding: 6px 10px; border: 1px solid var(--hairline);
+    background: var(--panel); color: var(--dim); font-size: 10px; letter-spacing: 0.14em;
+  }
+  #loading.on { display: flex; }
+  #loading b { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.2; } }
+
+  #toast {
+    position: absolute; right: 16px; bottom: 34px; z-index: 1000;
+    display: none; padding: 8px 12px; font-size: 11px; letter-spacing: 0.04em;
+    border: 1px solid var(--fire); color: var(--fire); background: var(--panel);
+  }
+  #toast.on { display: block; }
+
+  @media (max-width: 640px) { #hud { width: 224px; } #hud .head h1 { font-size: 12px; } }
 </style>
 </head>
 <body>
-<div id="sidebar">
-  <h1>SIH Thermal Anomaly MVP</h1>
-  <div class="sub">FIRMS hotspots · industrial-context classification</div>
-  <div class="stats" id="stats">Loading stats…</div>
+  <div id="map"></div>
 
-  <div class="filters">
-    <div class="sub">Classification filter</div>
-    <button class="active" data-class="">All</button>
-    <button data-class="industrial_fire"><span class="dot" style="background:var(--industrial-fire)"></span>Industrial fire</button>
-    <button data-class="persistent_industrial_source"><span class="dot" style="background:var(--persistent-industrial-source)"></span>Persistent source</button>
-    <button data-class="gas_flare"><span class="dot" style="background:var(--gas-flare)"></span>Gas flare</button>
-    <button data-class="non_industrial"><span class="dot" style="background:var(--non-industrial)"></span>Non-industrial</button>
-    <button data-class="unknown"><span class="dot" style="background:var(--unknown)"></span>Unknown</button>
-  </div>
+  <aside id="hud">
+    <div class="head">
+      <div class="mark">SIH</div>
+      <div>
+        <h1>THERMAL ANOMALY MONITOR</h1>
+        <div class="sub">VIIRS NRT · NOAA-20 / NOAA-21</div>
+      </div>
+    </div>
 
-  <div class="legend">
-    <div><span class="dot" style="background:var(--industrial-fire)"></span>industrial_fire</div>
-    <div><span class="dot" style="background:var(--persistent-industrial-source)"></span>persistent_industrial_source</div>
-    <div><span class="dot" style="background:var(--gas-flare)"></span>gas_flare</div>
-    <div><span class="dot" style="background:var(--non-industrial)"></span>non_industrial</div>
-    <div><span class="dot" style="background:var(--unknown)"></span>unknown</div>
-  </div>
+    <div class="sec">COVERAGE</div>
+    <div id="totals">
+      <div class="cell"><div class="n" id="n-hot">—</div><div class="l">HOTSPOTS</div></div>
+      <div class="cell"><div class="n" id="n-fac">—</div><div class="l">FACILITIES</div></div>
+    </div>
 
-  <div id="detail"><p class="empty">Click a marker to see details.</p></div>
-</div>
-<div id="map"></div>
+    <div class="sec">CLASSIFY</div>
+    <div id="classes"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-const COLORS = {
-  industrial_fire: "#d32f2f",
-  persistent_industrial_source: "#fb8c00",
-  gas_flare: "#fbc02d",
-  non_industrial: "#2e7d32",
-  unknown: "#616161",
-  unclassified: "#9e9e9e",
-};
-const FMT_M = (m) => (m == null ? "—" : m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m");
+    <label for="window">WINDOW</label>
+    <select id="window">
+      <option value="all" selected>ALL TIME</option>
+      <option value="1">LAST 24 H</option>
+      <option value="7">LAST 7 D</option>
+      <option value="30">LAST 30 D</option>
+    </select>
 
-const map = L.map("map").setView([22, 82], 5);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 18,
-  attribution: "&copy; OpenStreetMap contributors",
-}).addTo(map);
+    <div id="status">
+      <span id="ingest">—</span>
+      <span class="live"><span id="live-dot"></span><span id="live-txt">IDLE</span></span>
+    </div>
+  </aside>
 
-let layer = L.layerGroup().addTo(map);
+  <div id="loading"><b></b>SYNCING DETECTIONS</div>
+  <div id="toast"></div>
 
-function badge(cls) {
-  const c = COLORS[cls] || COLORS.unclassified;
-  return '<span class="badge" style="background:' + c + '">' + cls + "</span>";
-}
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    "use strict";
 
-function renderFeatures(data) {
-  layer.clearLayers();
-  if (!data || !data.features || data.features.length === 0) {
-    L.popup({ maxWidth: 400 }).setLatLng(map.getCenter())
-      .setContent('<div class="p">No hotspots for this filter.</div>').openOn(map);
-    return;
-  }
-  for (const f of data.features) {
-    const p = f.properties;
-    const cls = p.class || "unclassified";
-    const color = COLORS[cls] || COLORS.unclassified;
-    const [lon, lat] = f.geometry.coordinates;
-    L.circleMarker([lat, lon], {
-      radius: 6, color: "#fff", weight: 1, fillColor: color, fillOpacity: 0.9,
-    })
-      .addTo(layer)
-      .bindPopup(
-        "<b>" + badge(cls) + "</b>" +
-        '<div class="p"><b>FRP:</b> ' + (p.frp == null ? "—" : p.frp.toFixed(2)) + "</div>" +
-        '<div class="p"><b>Date/time:</b> ' + p.acq_date + " " + String(p.acq_time).padStart(4, "0") + "</div>" +
-        '<div class="p"><b>Confidence:</b> ' + (p.confidence || "—") + "</div>" +
-        '<div class="p"><b>Nearest facility:</b> ' + (p.nearest_facility_name || p.nearest_facility_type || "—") + "</div>" +
-        '<div class="p"><b>Distance:</b> ' + FMT_M(p.distance_m) + "</div>" +
-        '<div class="p"><b>Persistence:</b> ' + p.persistence_score.toFixed(2) + " (" + p.nearby_detections_7d + " in 7d)</div>"
-      )
-      .on("click", () => loadDetail(p.id));
-  }
-  if (data.features.length === 1) map.fitBounds(layer.getBounds(), { maxZoom: 9 });
-}
+    /* ------------------------------------------------------------------ */
+    /*  Configuration                                                      */
+    /* ------------------------------------------------------------------ */
+    var API_HOTSPOTS = "/api/hotspots.geojson";
+    var API_STATS    = "/api/stats";
+    var API_HEALTH   = "/api/health";
 
-function loadHotspots(cls) {
-  const url = "/api/hotspots.geojson" + (cls ? "?class=" + encodeURIComponent(cls) : "");
-  fetch(url).then(r => r.json()).then(renderFeatures).catch(err => console.error(err));
-}
+    var CLASS_META = {
+      gas_flare:                      { label: "FLARE",  color: "#00bfff", accent: "#00bfff", pulse: true },
+      industrial_fire:                { label: "FIRE",   color: "#ff4444", accent: "#ff4444", pulse: true },
+      persistent_industrial_source:   { label: "PERSIST",color: "#ffd700", accent: "#ffd700", pulse: false },
+      non_industrial:                 { label: "BIOMASS",color: "#ff8c00", accent: "#ff8c00", pulse: false },
+      unknown:                        { label: "UNKNOWN",color: "#7a7a7a", accent: "#7a7a7a", pulse: false },
+      unclassified:                   { label: "RAW",    color: "#5c5c57", accent: "#5c5c57", pulse: false }
+    };
+    var CLASS_ORDER = ["gas_flare", "industrial_fire", "persistent_industrial_source", "non_industrial", "unknown", "unclassified"];
+    var WINDOW_DAYS = { "1": 1, "7": 7, "30": 30, "all": null };
+    var DEFAULT_LIMIT = 60000;
 
-function loadDetail(id) {
-  fetch("/api/hotspots/" + id).then(r => r.json()).then(d => {
-    const e = d.enrichment || {};
-    const rows = [
-      ["Source", d.source + " / " + d.satellite],
-      ["Date/time", d.acq_date + " " + String(d.acq_time || 0).padStart(4, "0")],
-      ["FRP", d.frp == null ? "—" : d.frp.toFixed(2)],
-      ["Confidence", d.confidence || "—"],
-      ["Coordinates", d.latitude.toFixed(4) + ", " + d.longitude.toFixed(4)],
-      ["Nearest facility", e.nearest_facility_name || e.nearest_facility_type || "—"],
-      ["Distance", FMT_M(e.distance_m)],
-      ["Inside facility?", e.within_facility ? "yes" : "no"],
-      ["Detections (7d)", e.nearby_detections_7d ?? 0],
-      ["Persistence", (e.persistence_score ?? 0).toFixed(2)],
-      ["FRP vs nearby", e.frp_vs_nearby == null ? "—" : e.frp_vs_nearby.toFixed(2)],
-    ];
-    document.getElementById("detail").innerHTML =
-      "<h2>" + badge(e.class || "unclassified") + "</h2>" +
-      rows.map(r => '<div class="row"><span>' + r[0] + "</span><span>" + r[1] + "</span></div>").join("") +
-      "<h2>Why</h2><ul class='reasons'>" +
-      (e.reasons && e.reasons.length ? e.reasons.map(r => "<li>" + r + "</li>").join("") : "<li>no reasons</li>") +
-      "</ul>";
-  }).catch(() => {
-    document.getElementById("detail").innerHTML = '<p class="empty">Could not load detail.</p>';
-  });
-}
+    /* ------------------------------------------------------------------ */
+    /*  State                                                              */
+    /* ------------------------------------------------------------------ */
+    var active = {};            // class -> bool (all on)
+    var layer = L.layerGroup();
+    var fetchSeq = 0;
+    var lastBboxKey = null;
+    var stats = null;
 
-function loadStats() {
-  fetch("/api/stats").then(r => r.json()).then(s => {
-    const bc = s.by_class || {};
-    const list = Object.entries(bc).map(([k, v]) => k + ": " + v).join(" · ");
-    document.getElementById("stats").innerHTML =
-      "<b>" + s.total_hotspots + "</b> hotspots · <b>" + s.total_facilities + "</b> industrial facilities<br>" +
-      (list || "no classifications yet");
-  }).catch(() => {
-    document.getElementById("stats").textContent = "Stats unavailable.";
-  });
-}
+    /* ------------------------------------------------------------------ */
+    /*  Helpers                                                            */
+    /* ------------------------------------------------------------------ */
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    function fmt(n, d) {
+      if (n == null || isNaN(n)) return "–";
+      if (d != null) return n.toFixed(d);
+      return n >= 1000 ? Math.round(n).toLocaleString("en-US") : String(Math.round(n));
+    }
+    function when(ts) {
+      if (!ts) return "—";
+      var d = new Date(ts);
+      if (isNaN(d)) return "—";
+      return d.toISOString().slice(0, 16).replace("T", " ");
+    }
+    function clsKey(k) { return CLASS_META[k] ? k : "unclassified"; }
+    function colorOf(k) { return CLASS_META[clsKey(k)].accent; }
 
-document.querySelectorAll(".filters button").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".filters button").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    loadHotspots(btn.dataset.class);
-  });
-});
+    /* ------------------------------------------------------------------ */
+    /*  Map + tiles (CartoDB Dark Matter)                                  */
+    /* ------------------------------------------------------------------ */
+    var map = L.map("map", {
+      zoomControl: true, preferCanvas: true
+    }).setView([20, 79], 5);
 
-loadStats();
-loadHotspots("");
-</script>
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OSM</a> &copy; <a href=\"https://carto.com/attributions\">CARTO</a>",
+      subdomains: "abcd", maxZoom: 20
+    }).addTo(map);
+
+    var HEALTHY = L.control.attribution({ prefix: "SIH / VIIRS NRT" });
+    HEALTHY.addTo(map);
+    map.addLayer(layer);
+
+    /* ------------------------------------------------------------------ */
+    /*  Spike icon + dot convenience: divIcon anchored at the base dot      */
+    /* ------------------------------------------------------------------ */
+    function spikeIcon(f) {
+      var meta = CLASS_META[clsKey(f.class)];
+      var label = meta.label;
+      var ft = (f.nearest_facility_type || "").toUpperCase().replace(/_/g, " ");
+      if (ft && f.class !== "non_industrial" && f.class !== "unknown") label += " · " + ft;
+      var html =
+        '<div class="spike">' +
+          '<div class="spike-label ' + esc(f.class) + '">' + esc(label) + '</div>' +
+          '<div class="spike-line"></div>' +
+          '<div class="spike-dot ' + esc(f.class) + '"></div>' +
+        '</div>';
+      return L.divIcon({
+        html: html,
+        className: "",
+        iconSize: [220, 64],
+        iconAnchor: [110, 60]
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Popup content                                                      */
+    /* ------------------------------------------------------------------ */
+    function popupHtml(f) {
+      var meta = CLASS_META[clsKey(f.class)];
+      var cls = (f.class || "unclassified").replace(/_/g, " ").toUpperCase();
+      var reasons = (f.reasons || []).map(function (r) { return "<div>" + esc(r) + "</div>"; }).join("");
+
+      function kv(k, v) { return "<tr><td class=\"k\">" + esc(k) + "</td><td class=\"v\">" + esc(v) + "</td></tr>"; }
+      var fac = f.nearest_facility_name || "—";
+      var ftype = (f.nearest_facility_type || "—").replace(/_/g, " ");
+      var dist = f.distance_m != null ? f.distance_m.toLocaleString("en-US") + " m" : "—";
+      var pers = f.persistence_score != null ? f.persistence_score.toFixed(2) : "—";
+      var night = f.nighttime_detection_fraction != null ? (f.nighttime_detection_fraction * 100).toFixed(0) + "%" : "—";
+      var ratio = f.current_frp_vs_historical_mean != null ? f.current_frp_vs_historical_mean.toFixed(2) + "x" : "—";
+
+      return '<div id="pop">' +
+        '<div class="cls" style="color:' + colorOf(f.class) + '">' + esc(cls) + '</div>' +
+        '<div class="code">' + esc((f.source || "NRT") + " · " + (f.satellite || "")) + "</div>" +
+        '<table>' +
+          kv("FRP", f.frp != null ? f.frp.toFixed(2) + " MW" : "—") +
+          kv("ACQ", f.acq_datetime ? f.acq_datetime.replace("T", " ") + "Z" : "—") +
+          kv("CONF", f.confidence || "—") +
+          kv("DAY/NIGHT", f.daynight || "—") +
+          (f.within_facility ? kv("CONTEXT", "INSIDE FACILITY") : "") +
+          kv("FACILITY", fac) +
+          kv("TYPE", ftype) +
+          kv("DIST", dist) +
+          kv("7D DETS", f.detections_7d != null ? f.detections_7d : "—") +
+          kv("30D DETS", f.detections_30d != null ? f.detections_30d : "—") +
+          kv("ACTIVE 30D", f.days_active_30d != null ? f.days_active_30d + " d" : "—") +
+          kv("PERSIST", pers) +
+          kv("NIGHT FRAC", night) +
+          kv("FRP VS 30D", ratio) +
+        '</table>' +
+        (reasons ? '<div class="reason">' + reasons + "</div>" : "") +
+      "</div>";
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Marker construction                                                 */
+    /* ------------------------------------------------------------------ */
+    function addFeature(f) {
+      var meta = CLASS_META[clsKey(f.class)];
+      var lat = f.latitude, lon = f.longitude;
+      if (lat == null || lon == null) return;
+
+      var m;
+      if (f.class === "non_industrial" || f.class === "unknown") {
+        m = L.circleMarker([lat, lon], {
+          radius: f.class === "non_industrial" ? 2.4 : 2,
+          color: meta.accent,
+          opacity: 0.55,
+          weight: 1,
+          fillColor: meta.accent,
+          fillOpacity: 0.35
+        });
+      } else {
+        m = L.marker([lat, lon], { icon: spikeIcon(f) });
+      }
+      m.bindPopup(popupHtml(f), { offset: f.class === "non_industrial" || f.class === "unknown" ? [0, 0] : [0, -10] });
+      m.addTo(layer);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Data fetching                                                      */
+    /* ------------------------------------------------------------------ */
+    function setLoading(on) {
+      document.getElementById("loading").classList.toggle("on", on);
+    }
+    function toast(msg, ms) {
+      var t = document.getElementById("toast");
+      t.textContent = msg;
+      t.classList.add("on");
+      clearTimeout(t._h);
+      t._h = setTimeout(function () { t.classList.remove("on"); }, ms || 5000);
+    }
+
+    function buildQuery() {
+      var params = [];
+      var activeClasses = CLASS_ORDER.filter(function (k) { return active[k]; });
+      activeClasses.forEach(function (k) { params.push("class=" + encodeURIComponent(k)); });
+
+      var win = document.getElementById("window").value;
+      var days = WINDOW_DAYS[win];
+      if (days != null) {
+        var d = new Date();
+        d.setUTCDate(d.getUTCDate() - days);
+        params.push("date_from=" + d.toISOString().slice(0, 10));
+      }
+      return "?" + params.join("&");
+    }
+
+    function fetchLayer(bbox) {
+      var seq = ++fetchSeq;
+      setLoading(true);
+      var q = buildQuery();
+      if (bbox) q += "&bbox=" + bbox.map(function (n) { return n.toFixed(3); }).join(",");
+      q += "&limit=" + DEFAULT_LIMIT;
+
+      fetch(API_HOTSPOTS + q)
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then(function (data) {
+          if (seq !== fetchSeq) return;   // stale response
+          layer.clearLayers();
+          (data.features || []).forEach(function (ft) { addFeature(ft.properties); });
+          setLoading(false);
+          var shown = data.features ? data.features.length : 0;
+          setStatusDot("ok", data.truncated ? "VIEW TRIMMED · " + shown : "LIVE · " + shown);
+          if (didFit && !bbox) fitTo(data.features || []);
+        })
+        .catch(function (err) {
+          if (seq !== fetchSeq) return;
+          setLoading(false);
+          setStatusDot("err", "FETCH FAILED");
+          toast("LOAD FAILED — " + err.message + " — RETRYING", 6000);
+        });
+    }
+
+    var didFit = false;
+    function fitTo(features) {
+      var latlngs = [];
+      for (var i = 0; i < features.length; i++) {
+        var p = features[i].properties;
+        if (p.latitude != null && p.longitude != null) latlngs.push([p.latitude, p.longitude]);
+      }
+      if (latlngs.length) {
+        map.fitBounds(L.latLngBounds(latlngs), { padding: [36, 36], maxZoom: 6 });
+      }
+      didFit = true;
+    }
+
+    function onMoved() {
+      var b = map.getBounds();
+      var key = [b.getWest().toFixed(3), b.getSouth().toFixed(3), b.getEast().toFixed(3), b.getNorth().toFixed(3)].join(",");
+      if (key === lastBboxKey) return;
+      lastBboxKey = key;
+      fetchLayer([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+    }
+
+    var movedTimer = null;
+    map.on("moveend", function () {
+      clearTimeout(movedTimer);
+      movedTimer = setTimeout(onMoved, 600);
+    });
+
+    /* ------------------------------------------------------------------ */
+    /*  Stats + class chips                                                */
+    /* ------------------------------------------------------------------ */
+    function fetchStats() {
+      fetch(API_STATS).then(function (r) { return r.json(); })
+        .then(function (s) {
+          stats = s;
+          document.getElementById("n-hot").textContent = fmt(s.total_hotspots);
+          document.getElementById("n-fac").textContent = fmt(s.total_facilities);
+          var by = s.by_class || {};
+          CLASS_ORDER.forEach(function (k) {
+            var chip = document.querySelector('#classes .chip[data-k="' + k + '"]');
+            if (chip) chip.querySelector(".n").textContent = fmt(by[k] || 0);
+          });
+        }).catch(function () {});
+    }
+
+    function fetchHealth() {
+      fetch(API_HEALTH).then(function (r) { return r.json(); })
+        .then(function (h) {
+          var ing = (h.last_successful_ingestion || {}).finished_at;
+          document.getElementById("ingest").textContent = "INGEST " + when(ing).slice(11);
+          if (h.status === "degraded") setStatusDot("warn", "PIPELINE DEGRADED");
+        }).catch(function () { setStatusDot("warn", "API UNREACHABLE"); });
+    }
+
+    function setStatusDot(state, txt) {
+      var st = document.getElementById("status");
+      st.className = state;
+      document.getElementById("live-txt").textContent = txt || "";
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Build class chips                                                  */
+    /* ------------------------------------------------------------------ */
+    function buildChips() {
+      var wrap = document.getElementById("classes");
+      CLASS_ORDER.forEach(function (k) {
+        var meta = CLASS_META[k];
+        var chip = document.createElement("button");
+        chip.className = "chip" + (active[k] ? "" : " off");
+        chip.dataset.k = k;
+        chip.style.setProperty("--dot", meta.color);
+        chip.innerHTML = '<span class="dot"></span>' + esc(meta.label) + '<span class="n">0</span>';
+        chip.addEventListener("click", function () {
+          active[k] = !active[k];
+          chip.classList.toggle("off", !active[k]);
+          fetchLayer(null);
+        });
+        wrap.appendChild(chip);
+      });
+    }
+
+    document.getElementById("window").addEventListener("change", function () {
+      fetchLayer(null);
+    });
+
+    /* ------------------------------------------------------------------ */
+    /*  Init                                                               */
+    /* ------------------------------------------------------------------ */
+    CLASS_ORDER.forEach(function (k) { active[k] = true; });
+    buildChips();
+    fetchStats();
+    fetchHealth();
+    fetchLayer(null);
+    setInterval(fetchHealth, 60000);
+    setInterval(fetchStats, 120000);
+  </script>
 </body>
 </html>
