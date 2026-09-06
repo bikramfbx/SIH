@@ -262,12 +262,15 @@
     /*  Map + tiles (CartoDB Dark Matter)                                  */
     /* ------------------------------------------------------------------ */
     var map = L.map("map", {
-      zoomControl: true, preferCanvas: true
+      zoomControl: true, preferCanvas: true, maxZoom: 17
     }).setView([20, 79], 5);
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OSM</a> &copy; <a href=\"https://carto.com/attributions\">CARTO</a>",
-      subdomains: "abcd", maxZoom: 20
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Tiles &copy; <a href=\"https://www.esri.com/en-us/legal/terms/full-master-agreement\">Esri</a> &mdash; Esri, Maxar, Earthstar Geographics",
+      maxZoom: 17
+    }).addTo(map);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 17
     }).addTo(map);
 
     var HEALTHY = L.control.attribution({ prefix: "SIH / VIIRS NRT" });
