@@ -274,8 +274,8 @@ def bulk_insert(conn, rows, collect_ids=True):
 
     with conn.cursor() as cur:
         cur.execute(INSERT_SQL, {"rows": json.dumps(valid)})
+        inserted = cur.rowcount
         inserted_ids = [r[0] for r in cur.fetchall()] if collect_ids else []
-        inserted = len(inserted_ids)
     summary.inserted = inserted
     summary.duplicates = n_valid - inserted
     summary.inserted_ids = inserted_ids

@@ -72,10 +72,10 @@ def load_facility_cells(conn, days=None):
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT DISTINCT round(latitude::numeric, 2),
-                            round(longitude::numeric, 2)
+            SELECT DISTINCT round(ST_Y(location::geometry)::numeric, 2),
+                            round(ST_X(location::geometry)::numeric, 2)
             FROM industrial_facilities
-            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+            WHERE location IS NOT NULL
             """,
         )
         return {(float(r[0]), float(r[1])) for r in cur.fetchall()}
