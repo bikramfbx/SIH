@@ -9,6 +9,8 @@
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/handler" },
+    { "source": "/map", "destination": "/frontend/map.html" },
+    { "source": "/assets/(.*)", "destination": "/frontend/assets/$1" },
     { "source": "/(.*)", "destination": "/frontend/index.html" }
   ]
 }

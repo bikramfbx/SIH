@@ -3,251 +3,432 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SIH — Thermal Anomaly Monitor</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<title>PyroSphere — Industrial Thermal Intelligence</title>
+<meta name="description" content="AI-enabled geospatial monitoring of industrial thermal anomalies. From a global noise floor of fires, a curated list of industrial-classified hotspots.">
+<link rel="preload" as="image" href="/assets/parallax/skybox.png">
+<link rel="preload" as="image" href="/assets/parallax/PowerPlant.png">
+<link rel="preload" as="image" href="/assets/parallax/FirefighterHero.png">
 <style>
   :root {
-    --industrial-fire: #d32f2f;
-    --persistent-industrial-source: #fb8c00;
-    --gas-flare: #fbc02d;
-    --industrial-fire: #d32f2f;
-    --unknown: #616161;
-    --unclassified: #9e9e9e;
-    --bg: #070a12;
-    --panel: rgba(10, 15, 28, 0.97);
-    --hairline: rgba(150, 175, 220, 0.14);
-    --ink: #e6e9f4;
-    --dim: #93a0b8;
-    --faint: #5c6b85;
-    --accent: #ffd700;
+    --bg: #0b0d10;
+    --bg-2: #121518;
+    --charcoal: #16191d;
+    --hairline: rgba(255, 255, 255, 0.08);
+    --ink: #eae9e4;
+    --dim: #9a968d;
+    --faint: #625e55;
+    --accent: #e0783e;
+    --accent-2: #e2a15e;
+    --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif;
-    background: var(--bg); color: var(--ink); }
-  #map { position: absolute; inset: 0 0 0 320px; background: var(--bg); }
-
-  /* Darken the keyless Esri dark-gray canvas toward a faint navy backdrop. */
-  .tile-dark .leaflet-tile {
-    filter: brightness(0.55) contrast(1.08) sepia(0.45) hue-rotate(200deg) saturate(1.6);
+  html { scroll-behavior: auto; }
+  html.lenis, html.lenis body { height: auto; }
+  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
 
-  #sidebar {
-    position: absolute; top: 0; left: 0; bottom: 0; width: 320px;
-    background: var(--panel);
-    border-right: 1px solid var(--hairline);
-    overflow-y: auto; padding: 16px;
+  /* ------------------------------------------------ navbar */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px;
+    background: rgba(11, 13, 16, 0.55);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--hairline);
   }
-  h1 { font-size: 17px; margin: 0 0 4px; letter-spacing: 0.02em; }
-  #sidebar h1::before { content: "▮ "; color: var(--accent); }
-  .sub { color: var(--dim); font-size: 12px; margin-bottom: 12px; }
-  .stats { font-size: 12px; color: var(--ink); margin-bottom: 14px; line-height: 1.6; }
-  .stats b { color: var(--accent); font-weight: 600; }
+  .nav__brand {
+    font-family: var(--serif); font-size: 15px; letter-spacing: 0.35em;
+    text-transform: uppercase; color: var(--ink); text-decoration: none;
+  }
+  .nav__brand span { color: var(--accent); }
+  .nav__links { display: flex; gap: 4px; align-items: center; }
+  .nav__links a {
+    color: var(--dim); text-decoration: none; font-size: 13px;
+    padding: 8px 14px; border-radius: 6px; letter-spacing: 0.06em;
+    transition: color 0.2s, background 0.2s;
+  }
+  .nav__links a:hover { color: var(--ink); background: rgba(255,255,255,0.05); }
+  .nav__cta {
+    color: var(--ink) !important; border: 1px solid rgba(224,120,62,0.5);
+    margin-left: 8px;
+  }
+  .nav__cta:hover { border-color: var(--accent); background: rgba(224,120,62,0.12); }
 
-  .filters { margin-bottom: 14px; }
-  .filters button {
-    display: inline-block; margin: 2px; padding: 4px 10px; font-size: 12px;
-    border: 1px solid rgba(150, 175, 220, 0.25); border-radius: 14px;
-    cursor: pointer; background: rgba(255, 255, 255, 0.03); color: var(--ink);
+  /* ------------------------------------------------ parallax hero */
+  .parallax {
+    position: relative;
+    height: 160vh;
+    background: var(--bg);
   }
-  .filters button:hover { border-color: rgba(150, 175, 220, 0.5); }
-  .filters button.active { color: #0a0a0a; border-color: #fff; background: #fff; }
-  .filters button[data-class="industrial_fire"].active,
-  .filters button[data-class="persistent_industrial_source"].active,
-  .filters button[data-class="gas_flare"].active,
-  .filters button[data-class="unknown"].active {
-    border-color: transparent; color: #fff;
-    background: var(--industrial-fire);
+  .parallax__sticky {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
   }
-  .filters button[data-class="persistent_industrial_source"].active { background: var(--persistent-industrial-source); }
-  .filters button[data-class="gas_flare"].active { background: var(--gas-flare); }
-  .filters button[data-class="unknown"].active { background: var(--unknown); }
-  .filters button .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px;
-    vertical-align: baseline; box-shadow: 0 0 5px currentColor; }
+  .parallax__visuals {
+    position: absolute; inset: 0;
+  }
+  .parallax__layers {
+    position: absolute; inset: 0;
+  }
+  .parallax__layer {
+    position: absolute; inset: 0;
+    will-change: transform;
+  }
+  .parallax__layer--sky    { z-index: 0; }
+  .parallax__layer--plant  { z-index: 1; }
+  .parallax__layer--title  { z-index: 2; }
+  .parallax__layer--fg     { z-index: 3; }
 
-  .legend { font-size: 12px; color: var(--dim); margin-bottom: 14px; }
-  .legend div { margin: 3px 0; }
-  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
-
-  #detail { font-size: 13px; }
-  #detail h2 { font-size: 14px; margin: 14px 0 6px; color: var(--ink); }
-  #detail .row { display: flex; justify-content: space-between; padding: 3px 0;
-    border-bottom: 1px dashed rgba(150, 175, 220, 0.16); }
-  #detail .row span:first-child { color: var(--dim); }
-  #detail .row span:last-child { text-align: right; padding-left: 12px; }
-  #detail .reasons { margin-top: 8px; padding-left: 16px; color: var(--ink); }
-  #detail .reasons li { margin: 3px 0; }
-  .badge {
-    display: inline-block; padding: 2px 9px; border-radius: 12px; color: #fff;
-    font-size: 11px; font-weight: 600; text-transform: lowercase;
+  /* object-fit:cover clips the drawn image to the element box, so a tall box
+     with a matching negative top extends the rendered canvas UPWARD by 300px.
+     That is exactly the cover scale of the 1448x1086 art in a 1600x900 box
+     (1.10497), so no recomposition happens -- and the headroom absorbs the
+     max downward parallax move (sky = 30% of 900px = 270px) with no edge
+     exposure. */
+  .parallax__layer-img {
+    position: absolute; left: 0; top: -33.333%;
+    width: 100%; height: 133.333%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
   }
-  .empty { color: var(--faint); font-size: 12px; }
-
-  .leaflet-popup-content { max-width: 260px; }
-  .leaflet-popup-content-wrapper {
-    background: rgba(10, 15, 28, 0.97); color: var(--ink);
-    border: 1px solid rgba(150, 175, 220, 0.3); border-radius: 3px;
+  /* firefighter + plant carry transparency: keep blend normal,
+     no colored edges, sky stays visible behind them. */
+  .parallax__layer--plant img,
+  .parallax__layer--fg img {
+    mix-blend-mode: normal;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
   }
-  .leaflet-popup-tip { background: rgba(10, 15, 28, 0.97); }
-  .leaflet-popup-content .p { margin: 2px 0; font-size: 12px; }
-  .leaflet-popup-content .p b { color: var(--dim); font-weight: 500; }
-  .leaflet-bar a { background: #0f1626; color: var(--ink); }
-  .leaflet-bar a:hover { background: #16213a; }
+
+  .parallax__title-wrap {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    text-align: center;
+    pointer-events: none;
+    padding: 0 24px;
+    margin-top: calc(-1 * 18vh); /* sit between plant (top stack) and firefighter band */
+  }
+  .parallax__kicker {
+    font-size: 12px; letter-spacing: 0.5em; text-transform: uppercase;
+    color: var(--accent-2); margin: 0 0 16px; font-weight: 500;
+  }
+  .parallax__title {
+    font-family: var(--serif);
+    font-size: clamp(64px, 11vw, 150px);
+    font-weight: 400; letter-spacing: 0.08em;
+    margin: 0; line-height: 0.95; color: #f3f0e8;
+    text-shadow: 0 2px 40px rgba(0,0,0,0.35);
+  }
+  .parallax__title span { color: var(--accent); }
+  .parallax__subtitle {
+    font-size: clamp(15px, 2vw, 21px);
+    letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--dim); margin: 18px 0 0; font-weight: 300;
+  }
+
+  .parallax__fade {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 22vh;
+    z-index: 5;
+    background: linear-gradient(to bottom,
+        rgba(11,13,16,0) 0%,
+        rgba(11,13,16,0.55) 60%,
+        var(--bg) 100%);
+    pointer-events: none;
+  }
+
+  /* ------------------------------------------------ content */
+  main { position: relative; z-index: 10; background: var(--bg); }
+  .section {
+    max-width: 1060px; margin: 0 auto; padding: 120px 32px;
+  }
+  .section--first { padding-top: 96px; }
+  .section__label {
+    font-size: 12px; letter-spacing: 0.4em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 20px;
+  }
+  .section h2 {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(28px, 4vw, 46px); line-height: 1.15;
+    margin: 0 0 24px; letter-spacing: 0.01em;
+  }
+  .section__body { color: var(--dim); font-size: 16px; max-width: 700px; }
+  .section__body strong { color: var(--ink); font-weight: 500; }
+  .section__body p { margin: 0 0 16px; }
+  .section__body p:last-child { margin-bottom: 0; }
+
+  .divider { border: 0; border-top: 1px solid var(--hairline); margin: 0 32px; }
+
+  /* how it works — restrained list, no card clutter */
+  .pipeline { list-style: none; margin: 40px 0 0; padding: 0; }
+  .pipeline li {
+    display: flex; gap: 24px; align-items: baseline;
+    padding: 20px 0; border-bottom: 1px solid var(--hairline);
+  }
+  .pipeline li span.step {
+    font-family: var(--serif); font-size: 26px; color: var(--accent);
+    min-width: 42px;
+  }
+  .pipeline li h3 { margin: 0 0 6px; font-size: 17px; font-weight: 500; }
+  .pipeline li p { margin: 0; color: var(--dim); font-size: 15px; }
+
+  .sources { list-style: none; margin: 28px 0 0; padding: 0; }
+  .sources li {
+    display: flex; gap: 14px; align-items: baseline; color: var(--dim);
+    padding: 10px 0; font-size: 15px;
+  }
+  .sources li::before { content: "▸"; color: var(--accent); }
+
+  .cta {
+    text-align: center; padding: 140px 32px;
+    position: relative;
+    background: linear-gradient(to bottom, var(--bg) 0%, #131004 100%);
+  }
+  .cta h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(30px, 5vw, 54px); margin: 0 0 14px; }
+  .cta .section__body { margin: 0 auto; }
+  .cta__btn {
+    display: inline-block; margin-top: 40px;
+    padding: 18px 52px; font-size: 15px; letter-spacing: 0.24em;
+    text-transform: uppercase; color: #0b0d10; text-decoration: none;
+    background: var(--accent); border-radius: 2px; font-weight: 600;
+    transition: background 0.25s, transform 0.25s;
+  }
+  .cta__btn:hover { background: var(--accent-2); transform: translateY(-2px); }
+
+  footer {
+    max-width: 1060px; margin: 0 auto; padding: 40px 32px 48px;
+    display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+    color: var(--faint); font-size: 12px; letter-spacing: 0.05em;
+  }
+  footer a { color: var(--dim); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+
+  @media (max-width: 760px) {
+    .nav { padding: 14px 18px; }
+    .nav__links a { font-size: 12px; padding: 7px 9px; }
+    .nav__links a.nav__cta { display: none; } /* keep nav airy on mobile; CTA below */
+    .section { padding: 88px 24px; }
+    .parallax__title-wrap { margin-top: calc(-1 * 16vh); }
+    .pipeline li { flex-direction: column; gap: 8px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .parallax__layer { will-change: auto; }
+    .parallax__title { text-shadow: 0 2px 24px rgba(0,0,0,0.5); }
+  }
 </style>
 </head>
 <body>
-<div id="sidebar">
-  <h1>SIH Thermal Anomaly Monitor</h1>
-  <div class="sub">FIRMS VIIRS NRT · industrial-context classification</div>
-  <div class="stats" id="stats">Loading stats…</div>
 
-  <div class="filters">
-    <div class="sub">Classification filter</div>
-    <button data-class="industrial_fire"><span class="dot" style="background:var(--industrial-fire)"></span>Industrial fire</button>
-    <button data-class="persistent_industrial_source"><span class="dot" style="background:var(--persistent-industrial-source)"></span>Persistent source</button>
-    <button data-class="gas_flare"><span class="dot" style="background:var(--gas-flare)"></span>Gas flare</button>
-    <button data-class="unknown"><span class="dot" style="background:var(--unknown)"></span>Unknown</button>
-    <button data-class="*"><span class="dot" style="background:linear-gradient(90deg,#d32f2f,#fb8c00,#fbc02d)"></span>All industrial</button>
+<nav class="nav">
+  <a class="nav__brand" href="/">Pyro<span>Sphere</span></a>
+  <div class="nav__links">
+    <a href="#about">About</a>
+    <a href="#technology">Technology</a>
+    <a class="nav__cta" href="/map">Map</a>
   </div>
+</nav>
 
-  <div class="legend">
-    <div><span class="dot" style="background:var(--industrial-fire)"></span>industrial_fire</div>
-    <div><span class="dot" style="background:var(--persistent-industrial-source)"></span>persistent_industrial_source</div>
-    <div><span class="dot" style="background:var(--gas-flare)"></span>gas_flare</div>
-    <div><span class="dot" style="background:var(--unknown)"></span>unknown</div>
+<div class="parallax" id="top">
+  <div class="parallax__sticky">
+    <div class="parallax__visuals">
+      <div class="parallax__layers" data-parallax-layers>
+        <div class="parallax__layer parallax__layer--sky" data-parallax-layer="1">
+          <img class="parallax__layer-img" src="/assets/parallax/skybox.png"
+               alt="" aria-hidden="true" decoding="async" fetchpriority="high">
+        </div>
+        <div class="parallax__layer parallax__layer--plant" data-parallax-layer="2">
+          <img class="parallax__layer-img" src="/assets/parallax/PowerPlant.png"
+               alt="" aria-hidden="true" decoding="async" fetchpriority="high">
+        </div>
+        <div class="parallax__layer parallax__layer--title" data-parallax-layer="3">
+          <div class="parallax__title-wrap">
+            <p class="parallax__kicker">Industrial Thermal Intelligence</p>
+            <h1 class="parallax__title">Pyro<span>Sphere</span></h1>
+            <p class="parallax__subtitle">AI-enabled geospatial monitoring of industrial thermal anomalies</p>
+          </div>
+        </div>
+        <div class="parallax__layer parallax__layer--fg" data-parallax-layer="4">
+          <img class="parallax__layer-img" src="/assets/parallax/FirefighterHero.png"
+               alt="" aria-hidden="true" decoding="async" fetchpriority="high">
+        </div>
+      </div>
+      <div class="parallax__fade"></div>
+    </div>
   </div>
-
-  <div id="detail"><p class="empty">Click a marker to see details.</p></div>
 </div>
-<div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<main>
+  <section class="section section--first" id="about">
+    <p class="section__label">What is PyroSphere</p>
+    <h2>Turning a global noise floor of fires into an industrial signal.</h2>
+    <div class="section__body">
+      <p>PyroSphere ingests near-real-time thermal anomalies from NASA FIRMS (VIIRS),
+      then enriches each detection with geospatial context from
+      <strong>~15,800 known industrial facilities</strong> — power plants, refineries,
+      steel and cement works — and its own on-location temporal history.</p>
+      <p>What comes out is not another fire feed. It is a
+      <strong>curated, defensible list of industrial-classified thermal hotspots</strong>,
+      each with human-readable reasons, ready for an analyst to follow up with one click.</p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <section class="section" id="problem">
+    <p class="section__label">The Problem</p>
+    <h2>A single VIIRS detection is ambiguous.</h2>
+    <div class="section__body">
+      <p>One thermal anomaly can be a gas flare at an LNG terminal, a persistent process
+      heat source at a steel mill, an industrial accident — or simply a wildfire,
+      agricultural residue burn, or routine crop clearing.</p>
+      <p>Faced with <strong>hundreds of thousands of raw detections</strong>, an analyst
+      has no way to separate signal from noise. Existing FIRMS viewers show every fire
+      and offer no industrial lens. PyroSphere narrows the world down to what
+      matters.</p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <section class="section" id="technology">
+    <p class="section__label">How It Works</p>
+    <h2>A transparent pipeline, from satellite to signal.</h2>
+    <ul class="pipeline">
+      <li>
+        <span class="step">01</span>
+        <div>
+          <h3>NASA FIRMS thermal anomalies</h3>
+          <p>Global VIIRS NRT detections are streamed in and pre-screened for industrial context before storage.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step">02</span>
+        <div>
+          <h3>Industrial facility context</h3>
+          <p>OpenStreetMap + WRI power-plant geometry: 15,809 indexed facilities provide the geospatial anchor.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step">03</span>
+        <div>
+          <h3>Geospatial enrichment</h3>
+          <p>Each hotspot is matched to the nearest facility, inside/outside geometry, bounding distance and drivers.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step">04</span>
+        <div>
+          <h3>Classification</h3>
+          <p>Transparent rules fuse temporal persistence, FRP baselines and proximity into gas flare, persistent source or industrial fire — with reasons.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step">05</span>
+        <div>
+          <h3>Interactive GIS monitoring</h3>
+          <p>Deep-dive on a globe: filter by class, inspect per-hotspot evidence and follow facilities.</p>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <hr class="divider">
+
+  <section class="section" id="data">
+    <p class="section__label">Data Sources</p>
+    <h2>Open, explainable, auditable.</h2>
+    <ul class="sources">
+      <li>NASA FIRMS / VIIRS — near-real-time thermal anomaly detections</li>
+      <li>OpenStreetMap — industrial and power infrastructure geometry</li>
+      <li>WRI Global Power Plant Database — global power facility registry</li>
+      <li>VIIRS Nightfire / thermal context — persistent combustion signatures</li>
+      <li>Land-cover &amp; contextual satellite data — future enrichment seams</li>
+    </ul>
+  </section>
+</main>
+
+<section class="cta" id="map-cta">
+  <h2>See the signal.</h2>
+  <div class="section__body">
+    <p>Explore live industrial thermal monitoring across the globe — filters, classifications and per-hotspot evidence.</p>
+  </div>
+  <a class="cta__btn" href="/map">Explore Live Map</a>
+</section>
+
+<footer>
+  <span>PyroSphere — Industrial Thermal Intelligence</span>
+  <span>
+    <a href="#top">Back to top</a> &nbsp;·&nbsp;
+    <a href="/map">Map</a>
+  </span>
+</footer>
+
+<script src="/assets/vendor/gsap.min.js"></script>
+<script src="/assets/vendor/ScrollTrigger.min.js"></script>
+<script src="/assets/vendor/lenis.js"></script>
 <script>
-const COLORS = {
-  industrial_fire: "#d32f2f",
-  persistent_industrial_source: "#fb8c00",
-  gas_flare: "#fbc02d",
-  unknown: "#616161",
-  unclassified: "#9e9e9e",
-};
-const FMT_M = (m) => (m == null ? "—" : m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m");
-
-function esc(s) {
-  return String(s == null ? "" : s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
-const map = L.map("map", { maxZoom: 17 }).setView([22, 82], 5);
-L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
-  maxZoom: 17,
-  className: "tile-dark",
-  attribution: "Tiles &copy; <a href=\"https://www.esri.com/en-us/legal/terms/full-master-agreement\">Esri</a> &mdash; Esri, Maxar, Earthstar Geographics",
-}).addTo(map);
-L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
-  maxZoom: 17,
-}).addTo(map);
-
-let layer = L.layerGroup().addTo(map);
-
-function badge(cls) {
-  const c = COLORS[cls] || COLORS.unclassified;
-  return '<span class="badge" style="background:' + c + '">' + esc(cls) + "</span>";
-}
-
-function renderFeatures(data) {
-  layer.clearLayers();
-  if (!data || !data.features || data.features.length === 0) {
-    L.popup({ maxWidth: 400 }).setLatLng(map.getCenter())
-      .setContent('<div class="p">No hotspots for this filter.</div>').openOn(map);
-    return;
+(function () {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return; // static composition; no animation, no risk of gap
   }
-  for (const f of data.features) {
-    const p = f.properties;
-    const cls = p.class || "unclassified";
-    const color = COLORS[cls] || COLORS.unclassified;
-    const [lon, lat] = f.geometry.coordinates;
-    L.circleMarker([lat, lon], {
-      radius: 6, color: "#fff", weight: 1, fillColor: color, fillOpacity: 0.9,
-    })
-      .addTo(layer)
-      .bindPopup(
-        "<b>" + badge(cls) + "</b>" +
-        '<div class="p"><b>FRP:</b> ' + (p.frp == null ? "—" : p.frp.toFixed(2)) + "</div>" +
-        '<div class="p"><b>Date/time:</b> ' + (p.acq_datetime || "—") + "</div>" +
-        '<div class="p"><b>Confidence:</b> ' + esc(p.confidence || "—") + "</div>" +
-        '<div class="p"><b>Nearest facility:</b> ' + esc(p.nearest_facility_name || p.nearest_facility_type || "—") + "</div>" +
-        '<div class="p"><b>Distance:</b> ' + FMT_M(p.distance_m) + "</div>" +
-        '<div class="p"><b>Persistence:</b> ' + (p.persistence_score == null ? "—" : p.persistence_score.toFixed(2)) +
-        " (" + (p.detections_7d ?? 0) + " in 7d)</div>"
-      )
-      .on("click", () => loadDetail(p.id));
-  }
-  if (data.features.length === 1) map.fitBounds(layer.getBounds(), { maxZoom: 9 });
-}
 
-const INDUSTRIAL_CLASSES = ["industrial_fire", "persistent_industrial_source", "gas_flare"];
+  gsap.registerPlugin(ScrollTrigger);
 
-function loadHotspots(cls) {
-  // "*" (or no selection) shows all industrially-relevant hotspot classes.
-  // The database stores only industrially-screened detections; there is no
-  // "all raw fires" view by design.
-  const classes = (cls === "*" || !cls) ? INDUSTRIAL_CLASSES : [cls];
-  const q = classes.map(c => "class=" + encodeURIComponent(c)).join("&");
-  const url = "/api/hotspots.geojson" + (q ? "?" + q : "");
-  fetch(url).then(r => r.json()).then(renderFeatures).catch(err => console.error(err));
-}
-
-function loadDetail(id) {
-  fetch("/api/hotspots/" + id).then(r => r.json()).then(d => {
-    const e = d.enrichment || {};
-    const rows = [
-      ["Source", esc(d.source + " / " + d.satellite)],
-      ["Date/time", esc(d.acq_datetime || "—")],
-      ["FRP", d.frp == null ? "—" : d.frp.toFixed(2)],
-      ["Confidence", esc(d.confidence || "—")],
-      ["Coordinates", (d.latitude ?? 0).toFixed(4) + ", " + (d.longitude ?? 0).toFixed(4)],
-      ["Nearest facility", esc(e.nearest_facility_name || e.nearest_facility_type || "—")],
-      ["Distance", FMT_M(e.distance_m)],
-      ["Inside facility?", e.within_facility ? "yes" : "no"],
-      ["Detections (7d)", e.detections_7d ?? 0],
-      ["Active days (30d)", e.days_active_30d ?? 0],
-      ["Persistence", (e.persistence_score ?? 0).toFixed(2)],
-      ["FRP vs nearby", e.frp_vs_nearby == null ? "—" : e.frp_vs_nearby.toFixed(2)],
+  var trigger = document.querySelector("[data-parallax-layers]");
+  var tl;
+  if (trigger) {
+    tl = gsap.timeline({
+      scrollTrigger: {
+        trigger: trigger,
+        start: "0% 0%",
+        end: "100% 0%",
+        scrub: 0
+      }
+    });
+    var layers = [
+      { layer: "1", yPercent: 30 }, // skybox   — back
+      { layer: "2", yPercent: 18 }, // plant    — middle back
+      { layer: "3", yPercent: 10 }, // title    — text band
+      { layer: "4", yPercent: 4 }   // firefighter — front
     ];
-    document.getElementById("detail").innerHTML =
-      "<h2>" + badge(e.class || "unclassified") + "</h2>" +
-      rows.map(r => '<div class="row"><span>' + r[0] + "</span><span>" + r[1] + "</span></div>").join("") +
-      "<h2>Why</h2><ul class='reasons'>" +
-      (e.reasons && e.reasons.length ? e.reasons.map(r => "<li>" + esc(r) + "</li>").join("") : "<li>no reasons</li>") +
-      "</ul>";
-  }).catch(() => {
-    document.getElementById("detail").innerHTML = '<p class="empty">Could not load detail.</p>';
-  });
-}
+    layers.forEach(function (layerObj, idx) {
+      tl.to(
+        trigger.querySelectorAll('[data-parallax-layer="' + layerObj.layer + '"]'),
+        { yPercent: layerObj.yPercent, ease: "none" },
+        idx === 0 ? undefined : "<"
+      );
+    });
+  }
 
-function loadStats() {
-  fetch("/api/stats").then(r => r.json()).then(s => {
-    const bc = s.by_class || {};
-    const list = Object.entries(bc).map(([k, v]) => k + ": " + v).join(" · ");
-    document.getElementById("stats").innerHTML =
-      "<b>" + s.total_hotspots + "</b> hotspots · <b>" + s.total_facilities + "</b> industrial facilities<br>" +
-      (list || "no classifications yet");
-  }).catch(() => {
-    document.getElementById("stats").textContent = "Stats unavailable.";
-  });
-}
+  var lenis = new Lenis({ smoothWheel: true });
+  lenis.on("scroll", ScrollTrigger.update);
+  gsap.ticker.add(function (time) { lenis.raf(time * 1000); });
+  gsap.ticker.lagSmoothing(0);
 
-document.querySelectorAll(".filters button").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".filters button").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    loadHotspots(btn.dataset.class);
+  // Anchor jumps (nav = #about / #technology) via Lenis smooth wheel.
+  document.querySelectorAll('a[href^="#"]').forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      var t = document.querySelector(a.getAttribute("href"));
+      if (t) { e.preventDefault(); lenis.scrollTo(t, { offset: 0, duration: 1.4 }); }
+    });
   });
-});
 
-loadStats();
-document.querySelector('.filters button[data-class="*"]').classList.add("active");
-loadHotspots("*");
+  window.addEventListener("beforeunload", function () {
+    if (lenis) lenis.destroy();
+  });
+})();
 </script>
 </body>
 </html>

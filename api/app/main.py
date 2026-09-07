@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import psycopg
@@ -585,5 +586,12 @@ def worker_maintenance(request: Request):
 # run without the frontend/ directory present.
 _frontend_dir = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
 if os.path.isdir(_frontend_dir):
+    # Map app lives at /map (kept out of the catch-all so it resolves cleanly).
+    _map_html = os.path.join(_frontend_dir, "map.html")
+    if os.path.isfile(_map_html):
+
+        @app.get("/map", include_in_schema=False)
+        async def _serve_map() -> FileResponse:
+            return FileResponse(_map_html)
     app.mount("/", StaticFiles(directory=_frontend_dir, html=True),
               name="frontend")
