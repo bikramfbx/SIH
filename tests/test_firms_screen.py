@@ -59,3 +59,29 @@ class TestScreenRows:
             rows, "S", set(), percentile=90.0)
         assert [float(r["frp"]) for r in kept] == [9.0, 10.0]
         assert stats["frp"] == 2
+
+    def test_facility_cell_kept_without_other_rules(self):
+        rows = [row(10.005, 20.005, "3"), row(80, 0, "8")]
+        facility_cells = {(10.0, 20.0)}
+        kept, stats = firms_screen.screen_rows(
+            rows, "S", set(), facility_cells=facility_cells)
+        assert len(kept) == 1
+        assert stats["near_facility"] == 1
+        assert stats["kept"] == 1
+
+    def test_facility_neighbor_cell_kept(self):
+        # same cell + 0.01 lat (+/- ~1.1 km) counts as near a facility cell
+        rows = [row(10.01, 20.0, "3")]
+        facility_cells = {(10.0, 20.0)}
+        kept, stats = firms_screen.screen_rows(
+            rows, "S", set(), facility_cells=facility_cells)
+        assert len(kept) == 1
+        assert stats["near_facility"] == 1
+
+    def test_far_from_facilities_still_dropped(self):
+        rows = [row(10.5, 20.5, "3"), row(11.5, 21.5, "4")]
+        facility_cells = {(10.0, 20.0)}
+        kept, stats = firms_screen.screen_rows(
+            rows, "S", set(), facility_cells=facility_cells, min_in_day=2)
+        assert kept == []
+        assert stats["near_facility"] == 0

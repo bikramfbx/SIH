@@ -90,10 +90,26 @@ SELECT
 FROM hh h
 LEFT JOIN LATERAL (
     SELECT f.id AS fid, f.name AS fname, f.facility_type AS ftype,
-           ST_Distance(h.location, CAST(f.geometry AS geography)) AS dist_m,
-           ST_Covers(f.geometry, CAST(h.location AS geometry)) AS inside
+           CASE
+               WHEN f.geometry IS NOT NULL
+                   THEN ST_Distance(h.location,
+                                    CAST(f.geometry AS geography))
+               ELSE ST_Distance(h.location, f.location)
+           END AS dist_m,
+           COALESCE(
+               CASE WHEN f.geometry IS NOT NULL
+                   THEN ST_Covers(f.geometry, CAST(h.location AS geometry))
+                   WHEN f.location IS NOT NULL
+                   THEN ST_DWithin(h.location, f.location, 0)
+               END, FALSE) AS inside
     FROM industrial_facilities f
-    ORDER BY ST_Distance(h.location, CAST(f.geometry AS geography))
+    WHERE f.location IS NOT NULL
+    ORDER BY
+        CASE
+            WHEN f.geometry IS NOT NULL
+                THEN ST_Distance(h.location, CAST(f.geometry AS geography))
+            ELSE ST_Distance(h.location, f.location)
+        END
     LIMIT 1
 ) n ON TRUE
 LEFT JOIN LATERAL (
@@ -234,8 +250,20 @@ def enrich(conn, conn_info=None, hotspot_ids=None, persist_radius=None,
                     "reasons": json.dumps(reasons),
                 })
                 class_counts[label] = class_counts.get(label, 0) + 1
+            # Single-round-trip writeback: executemany() uses server-side
+            # prepared statements whose names collide across calls on pooled
+            # connections ("DuplicatePreparedStatement"), so the whole batch
+            # is passed through jsonb_to_recordset instead.
+            WRITEBACK_SQL = """
+            UPDATE hotspot_enrichment AS e
+            SET class = w.class, reasons = w.reasons
+            FROM jsonb_to_recordset(%(rows)s::jsonb)
+                AS w(hotspot_id bigint, class text, reasons jsonb)
+            WHERE e.hotspot_id = w.hotspot_id
+            """
             if updates:
-                cur.executemany(UPDATE_SQL, updates)
+                cur.execute(WRITEBACK_SQL,
+                            {"rows": json.dumps(updates)})
 
     class_counts.update(land_cover.persist_if_enabled(conn, ids_param))
     return {"enriched": enriched, "class_counts": class_counts}

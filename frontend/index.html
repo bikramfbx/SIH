@@ -10,7 +10,7 @@
     --industrial-fire: #d32f2f;
     --persistent-industrial-source: #fb8c00;
     --gas-flare: #fbc02d;
-    --non-industrial: #2e7d32;
+    --industrial-fire: #d32f2f;
     --unknown: #616161;
     --unclassified: #9e9e9e;
     --bg: #070a12;
@@ -54,14 +54,12 @@
   .filters button[data-class="industrial_fire"].active,
   .filters button[data-class="persistent_industrial_source"].active,
   .filters button[data-class="gas_flare"].active,
-  .filters button[data-class="non_industrial"].active,
   .filters button[data-class="unknown"].active {
     border-color: transparent; color: #fff;
     background: var(--industrial-fire);
   }
   .filters button[data-class="persistent_industrial_source"].active { background: var(--persistent-industrial-source); }
   .filters button[data-class="gas_flare"].active { background: var(--gas-flare); }
-  .filters button[data-class="non_industrial"].active { background: var(--non-industrial); }
   .filters button[data-class="unknown"].active { background: var(--unknown); }
   .filters button .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px;
     vertical-align: baseline; box-shadow: 0 0 5px currentColor; }
@@ -108,7 +106,6 @@
     <button data-class="industrial_fire"><span class="dot" style="background:var(--industrial-fire)"></span>Industrial fire</button>
     <button data-class="persistent_industrial_source"><span class="dot" style="background:var(--persistent-industrial-source)"></span>Persistent source</button>
     <button data-class="gas_flare"><span class="dot" style="background:var(--gas-flare)"></span>Gas flare</button>
-    <button data-class="non_industrial"><span class="dot" style="background:var(--non-industrial)"></span>Non-industrial</button>
     <button data-class="unknown"><span class="dot" style="background:var(--unknown)"></span>Unknown</button>
   </div>
 
@@ -116,7 +113,6 @@
     <div><span class="dot" style="background:var(--industrial-fire)"></span>industrial_fire</div>
     <div><span class="dot" style="background:var(--persistent-industrial-source)"></span>persistent_industrial_source</div>
     <div><span class="dot" style="background:var(--gas-flare)"></span>gas_flare</div>
-    <div><span class="dot" style="background:var(--non-industrial)"></span>non_industrial</div>
     <div><span class="dot" style="background:var(--unknown)"></span>unknown</div>
   </div>
 
@@ -130,7 +126,6 @@ const COLORS = {
   industrial_fire: "#d32f2f",
   persistent_industrial_source: "#fb8c00",
   gas_flare: "#fbc02d",
-  non_industrial: "#2e7d32",
   unknown: "#616161",
   unclassified: "#9e9e9e",
 };

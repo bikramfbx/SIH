@@ -308,11 +308,14 @@ def ingest_source(conn, map_key, source, bbox, days=DEFAULT_DAYS, date_param=Non
     summary = InsertSummary(total=len(rows), fetched=len(rows))
     kept = rows
     if _screen_enabled():
-        from firms_screen import load_prior_cells, screen_rows
+        from firms_screen import (load_facility_cells, load_prior_cells,
+                                  screen_rows)
         params = _screen_params()
         prior_cells = load_prior_cells(conn, source, days=params["prior_days"])
+        facility_cells = load_facility_cells(conn)
         kept, stats = screen_rows(
             rows, source, prior_cells,
+            facility_cells=facility_cells,
             frp_mw=params["frp_mw"], percentile=params["percentile"],
             min_in_day=params["min_in_day"],
         )

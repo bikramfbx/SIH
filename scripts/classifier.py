@@ -1,12 +1,16 @@
 """Transparent rule-based hotspot classifier (final backend).
 
-Deterministic rules produce one of five classes with human-readable reasons:
+Deterministic rules produce one of four classes with human-readable reasons:
 
     industrial_fire                sudden/large event at or near industry
     persistent_industrial_source   repeated, fairly stable detections near industry
     gas_flare                      bright/recurrent detection at a gas/thermal site
-    non_industrial                 thermal anomaly far from known industrial context
-    unknown                        insufficient data to classify
+    unknown                        thermal activity without clear industrial context
+
+There is deliberately no ``non_industrial`` class: detections far from every
+known industrial facility (or with no facility context at all) fall under
+``unknown``, which keeps the model honest about epistemic limits instead of
+pretending a "non-industrial" verdict is certain.
 
 The classifier consumes FIRMS thermal features, GIS industrial context and
 temporal/historical features. It also ACCEPTS optional vision-model signals
@@ -45,7 +49,6 @@ CLASSES = (
     "industrial_fire",
     "persistent_industrial_source",
     "gas_flare",
-    "non_industrial",
     "unknown",
 )
 
@@ -301,47 +304,30 @@ def _r_industrial_fire(f):
     return reasons
 
 
-def _r_non_industrial(f):
-    """Thermal anomaly far from any known industrial context."""
-    if f["distance_m"] is None and not f["facility_type"]:
-        return None  # no facility data at all -> _r_unknown
-    if f["within_facility"] or (
-        f["distance_m"] is not None and f["distance_m"] <= NEAR_DIST_M
-    ):
+def _r_unknown(f):
+    """No industrial-facility context is available to compare against — or the
+    detection is far from every known facility (deliberately NOT called
+    "non-industrial", since that overstates certainty without land-cover/OSM
+    completeness guarantees)."""
+    if f["within_facility"]:
         return None
-    if (
-        f["vision_industrial_prob"] is not None
-        and f["vision_industrial_prob"] >= VISION_INDUSTRY_PROB
-    ):
-        return None
-    if f["vision_fire_prob"] is not None and f["vision_fire_prob"] >= VISION_FIRE_PROB:
-        return None
-
-    reasons = [f"nearest facility is {_fmt_dist(f['distance_m'])} m away"]
-    if f["detections_7d"] > 0:
-        reasons.append(
-            f"{f['detections_7d']} detections in 7 d, "
-            f"{f['days_active_30d']} active days in 30 d here "
-            "(likely agricultural/vegetation fire cluster)")
+    if f["facility_type"] and (f["distance_m"] is None
+                               or f["distance_m"] <= NEAR_DIST_M):
+        return None  # close to a known facility -> handled by the industrial rules
+    if f["vision_industrial_prob"] is not None:
+        return None  # vision evidence means we should not call it unknown
+    reasons = ["no known industrial facility within screening range of this hotspot"]
+    if f["distance_m"] is not None:
+        reasons = [f"nearest known industrial facility is {_fmt_dist(f['distance_m'])} m away"]
     return reasons
 
 
-def _r_unknown(f):
-    """No industrial-facility context is available to compare against."""
-    if f["distance_m"] is not None or f["facility_type"]:
-        return None
-    if f["vision_industrial_prob"] is not None:
-        return None  # vision evidence means we should not call it unknown
-    return ["no industrial facility data available for this hotspot"]
-
-
 # Evaluation order matters: gas first, then persistent steady sources, then
-# one-off fires near industry, then far-from-industry, then unknown.
+# one-off fires near industry, then unknown.
 RULE_CHAIN = (
     ("gas_flare", _r_gas_flare),
     ("persistent_industrial_source", _r_persistent_industrial),
     ("industrial_fire", _r_industrial_fire),
-    ("non_industrial", _r_non_industrial),
     ("unknown", _r_unknown),
 )
 

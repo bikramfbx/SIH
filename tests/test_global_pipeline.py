@@ -235,3 +235,39 @@ class TestVisionFallback:
                       "vision_facility_type": "refinery"}
         feats = classifier.build_features(hotspot, enrichment)
         assert feats["vision_industrial_prob"] == 0.95
+
+
+class TestFarFromIndustryRoutesToUnknown:
+    """Far-from-every-facility detections must land in 'unknown' -- there is
+    deliberately no 'non_industrial' class (removed with the UI tab)."""
+
+    def test_non_industrial_class_removed(self):
+        import classifier
+        assert "non_industrial" not in classifier.CLASSES
+
+    def test_far_from_facility_is_unknown(self):
+        import classifier
+
+        hotspot = {"frp": 12.0, "daynight": "D", "latitude": -31.5,
+                   "longitude": 121.3, "acq_datetime": None}
+        enrichment = {"distance_m": 120000.0, "within_facility": False,
+                      "nearest_facility_type": None, "nearest_facility_name": None,
+                      "detections_24h": 1, "detections_7d": 4, "detections_30d": 9,
+                      "days_active_30d": 2, "mean_frp_7d": 10.0,
+                      "mean_frp_30d": 9.0, "max_frp_30d": 14.0,
+                      "current_frp_vs_historical_mean": 1.3,
+                      "nighttime_detection_fraction": 0.3,
+                      "persistence_score": 0.6}
+        feats = classifier.build_features(hotspot, enrichment)
+        label, reasons = classifier.apply_rules(feats)
+        assert label == "unknown"
+        assert any("facility" in r for r in reasons)
+
+    def test_no_context_is_unknown(self):
+        import classifier
+
+        hotspot = {"frp": 5.0, "daynight": "N", "latitude": 0.0,
+                   "longitude": 0.0, "acq_datetime": None}
+        feats = classifier.build_features(hotspot, {})
+        label, reasons = classifier.apply_rules(feats)
+        assert label == "unknown"

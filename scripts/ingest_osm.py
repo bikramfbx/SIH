@@ -346,7 +346,7 @@ def upsert_facilities(conn, facilities, source="osm/overpass"):
                         "name": f["name"],
                         "facility_type": f["facility_type"],
                         "tags": json.dumps(f["tags"]),
-                        "source": source,
+                        "source": f.get("source", source),
                         "wkt": f["wkt"],
                         "lon": f["lon"],
                         "lat": f["lat"],

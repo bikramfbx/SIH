@@ -17,7 +17,8 @@ Reference labels are derived *independently* of the classifier rules:
 The automatic classifier label is judged correct for a positive reference
 when it is one of the industrial classes (industrial_fire /
 persistent_industrial_source / gas_flare), and for a negative reference when
-it is non_industrial (unknown also reported but not counted correct).
+it is ``unknown`` (the former ``non_industrial`` class was removed; truly
+far-from-industry detections now land in ``unknown``).
 
 Honest caveat printed with the report: the facility table is shared OSM data,
 so this validates the classifier's geometric/temporal *rules* against the
@@ -111,7 +112,7 @@ def main():
 
     ref_counts = Counter()
     confusion = defaultdict(Counter)   # ref -> pred
-    examples_fp = []                   # ref positive, pred non-industrial/unknown
+    examples_fp = []                   # ref positive, pred unknown/industrial
     examples_fn = []                   # ref negative, pred industrial
     correct = 0
     for row in rows:
@@ -126,7 +127,7 @@ def main():
                 if len(examples_fp) < 10:
                     examples_fp.append(_example(row, pred))
         elif ref == "negative":
-            if pred == "non_industrial":
+            if pred == "unknown":
                 correct += 1
             elif pred in INDUSTRIAL_LABELS:
                 if len(examples_fn) < 10:
@@ -179,8 +180,7 @@ def main():
         shown = ", ".join(f"{k}={v}" for k, v in sorted(row.items()))
         lines.append(f"  {ref:>9}: {shown}")
     lines.append("")
-    lines.append("False positives (ref industrial, classified"
-                 " non_industrial/unknown):")
+    lines.append("False positives (ref industrial, classified unknown):")
     for ex in examples_fp:
         lines.append(f"  {ex}")
     lines.append("False negatives (ref non-industrial, classified"

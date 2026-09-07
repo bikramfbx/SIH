@@ -1,0 +1,6 @@
+data/facilities/*.csv
+data/facilities/*.csv.gz
+*.csv.gz
+.env
+.env.deploy
+.env.local

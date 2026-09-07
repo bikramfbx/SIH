@@ -13,6 +13,9 @@ S2 (within-day persistence): the quantized location is observed more than
    continuously-burning source).
 S3 (high FRP): FRP >= FIRMS_SCREEN_FRP_MW absolute threshold, or >= the
    FIRMS_SCREEN_FRP_PERCENTILE percentile of the day's FRP distribution.
+S4 (facility proximity): the quantized location (or any of its 8 immediate
+   neighbors within ~1.5 km) is a cell holding a known industrial facility
+   (industrial_facilities table). Industrial context always wins.
 
 A row is kept when ANY rule matches; drops are only counted, never stored.
 All thresholds are env-configurable (see firms._screen_params()).
@@ -60,6 +63,24 @@ def load_prior_cells(conn, source, days=DEFAULT_PRIOR_DAYS):
         return {(r[0], (float(r[1]), float(r[2]))) for r in cur.fetchall()}
 
 
+def load_facility_cells(conn, days=None):
+    """All 0.01-deg cells that contain at least one industrial facility.
+
+    ``days`` is accepted for API symmetry (S1) but facilities are static
+    reference data, so every existing facility cell is returned regardless.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT round(latitude::numeric, 2),
+                            round(longitude::numeric, 2)
+            FROM industrial_facilities
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+            """,
+        )
+        return {(float(r[0]), float(r[1])) for r in cur.fetchall()}
+
+
 def _percentile_threshold(frps, percentile):
     if percentile is None or not frps:
         return None
@@ -68,11 +89,23 @@ def _percentile_threshold(frps, percentile):
     return frps[idx]
 
 
-def screen_rows(rows, source, prior_cells, frp_mw=None, percentile=None,
-                min_in_day=DEFAULT_MIN_IN_DAY):
+def _facility_near(cell, facility_cells):
+    if cell in facility_cells:
+        return True
+    lat, lon = cell
+    for dlat in (-1, 0, 1):
+        for dlon in (-1, 0, 1):
+            if (round(lat + dlat / 100.0, CELL_ROUND),
+                    round(lon + dlon / 100.0, CELL_ROUND)) in facility_cells:
+                return True
+    return False
+
+
+def screen_rows(rows, source, prior_cells, facility_cells=None, frp_mw=None,
+                percentile=None, min_in_day=DEFAULT_MIN_IN_DAY):
     """Screen raw CSV row dicts; returns ``(kept, stats)``."""
     stats = {"total": len(rows), "kept": 0, "dropped": 0,
-             "prior": 0, "in_day": 0, "frp": 0}
+             "prior": 0, "in_day": 0, "frp": 0, "near_facility": 0}
     if not rows:
         return [], stats
 
@@ -82,6 +115,9 @@ def screen_rows(rows, source, prior_cells, frp_mw=None, percentile=None,
             counts[cell_key(row["latitude"], row["longitude"])] += 1
         except (ValueError, KeyError, TypeError):
             continue
+
+    if facility_cells is None:
+        facility_cells = set()
 
     frps = sorted(f for f in (_frp(row) for row in rows) if f is not None)
     threshold = None
@@ -101,7 +137,8 @@ def screen_rows(rows, source, prior_cells, frp_mw=None, percentile=None,
         m1 = (source, cell) in prior_cells
         m2 = counts[cell] >= min_in_day
         m3 = threshold is not None and frp is not None and frp >= threshold
-        if m1 or m2 or m3:
+        m4 = _facility_near(cell, facility_cells)
+        if m1 or m2 or m3 or m4:
             kept.append(row)
             stats["kept"] += 1
             if m1:
@@ -110,6 +147,8 @@ def screen_rows(rows, source, prior_cells, frp_mw=None, percentile=None,
                 stats["in_day"] += 1
             if m3:
                 stats["frp"] += 1
+            if m4:
+                stats["near_facility"] += 1
         else:
             stats["dropped"] += 1
     return kept, stats
