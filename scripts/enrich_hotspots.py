@@ -39,6 +39,7 @@ import psycopg
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import classifier  # noqa: E402
+import land_cover  # noqa: E402
 
 DEFAULT_PERSIST_RADIUS_M = 1000
 DEFAULT_PERSIST_WINDOW_DAYS = 7
@@ -229,6 +230,8 @@ def enrich(conn, conn_info=None, hotspot_ids=None, persist_radius=None,
                     "reasons": json.dumps(reasons),
                 })
                 class_counts[label] = class_counts.get(label, 0) + 1
+
+    class_counts.update(land_cover.persist_if_enabled(conn, ids_param))
     return {"enriched": enriched, "class_counts": class_counts}
 
 

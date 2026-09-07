@@ -1,0 +1,62 @@
+# Disposable offline fresh-install stack (compose project: sih-fresh).
+# Purely for the fresh-install / failure-mode harness; never used in prod.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: thermal_anomaly
+      POSTGRES_USER: thermal_admin
+      POSTGRES_PASSWORD: fresh_test_pw
+    volumes:
+      - fresh_pgdata:/var/lib/postgresql/data
+      - ../../database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
+  mockfirms:
+    image: python:3.12-slim
+    command: ["python", "/mock/mock_firms_server.py"]
+    environment:
+      FIXTURES_DIR: /fixtures
+      MOCK_MODE: ${MOCK_MODE:-ok}
+      PORT: 8100
+    volumes:
+      - ./mock_firms_server.py:/mock/mock_firms_server.py:ro
+      - ./fixtures:/fixtures:ro
+
+  api:
+    image: sih-fresh-api:latest
+    depends_on: [db]
+    environment:
+      POSTGRES_DB: thermal_anomaly
+      POSTGRES_USER: thermal_admin
+      POSTGRES_PASSWORD: fresh_test_pw
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    ports:
+      - "8101:8000"
+    volumes:
+      - ../../api:/app/api:ro
+      - ../../scripts:/app/scripts:ro
+      - ../../frontend:/app/frontend:ro
+
+  worker:
+    image: sih-fresh-api:latest
+    depends_on: [db, mockfirms]
+    environment:
+      POSTGRES_DB: thermal_anomaly
+      POSTGRES_USER: thermal_admin
+      POSTGRES_PASSWORD: fresh_test_pw
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      FIRMS_MAP_KEY: fresh-mock-key
+      FIRMS_BASE_URL: http://mockfirms:8100
+      FIRMS_BBOX: 68,6,98,38
+      FIRMS_SOURCES: VIIRS_NOAA20_NRT,VIIRS_NOAA21_NRT
+      FIRMS_DAYS: 2
+      FIRMS_POLL_INTERVAL_MIN: 10
+      WORKER_OSM_CONTEXT: 0
+    command: ["python", "scripts/worker.py"]
+    volumes:
+      - ../../scripts:/app/scripts:ro
+
+volumes:
+  fresh_pgdata:

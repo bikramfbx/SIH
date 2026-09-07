@@ -26,3 +26,12 @@ Thumbs.db
 
 # Docker
 pgdata/
+
+# Local datasets, reports, scratch
+data/
+models/
+reports/
+tmp/
+*.osm.pbf
+*.osm
+dl.log

@@ -1,0 +1,5 @@
+latitude,longitude,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti4,bright_ti5,frp,daynight
+23.8472,78.3345,2026-09-06,1235,VIIRS,750m,h,2.0NRT,305.2,293.1,22.5,D
+21.1012,82.0203,2026-09-06,1240,VIIRS,750m,h,2.0NRT,299.8,290.4,14.2,D
+18.7956,79.9812,2026-09-06,1255,VIIRS,750m,l,2.0NRT,312.0,296.7,38.9,D
+20.4410,84.0123,2026-09-06,1305,VIIRS,750m,n,2.0NRT,308.1,291.5,19.7,D

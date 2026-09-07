@@ -149,3 +149,30 @@ CREATE INDEX IF NOT EXISTS idx_ingestion_run_log_finished
     ON ingestion_run_log (finished_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ingestion_run_log_kind_status
     ON ingestion_run_log (kind, status);
+-- ---------------------------------------------------------------------------
+-- Hardening migration (idempotent) -- worker heartbeat + query indexes +
+-- optional land-cover evidence seams. Mirrors database/migrations/003_hardening.sql.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS worker_status (
+    worker_id          TEXT PRIMARY KEY,
+    started_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_heartbeat_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    cycle_count        BIGINT NOT NULL DEFAULT 0,
+    last_cycle_status  TEXT,
+    last_error         TEXT,
+    last_inserted      INTEGER NOT NULL DEFAULT 0,
+    version            TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_hotspots_source
+    ON hotspots (source);
+CREATE INDEX IF NOT EXISTS idx_hotspots_source_acq_date
+    ON hotspots (source, acq_date DESC);
+CREATE INDEX IF NOT EXISTS idx_hotspot_enrichment_facility_id
+    ON hotspot_enrichment (nearest_facility_id)
+    WHERE nearest_facility_id IS NOT NULL;
+
+ALTER TABLE hotspot_enrichment
+    ADD COLUMN IF NOT EXISTS landcover_class     TEXT,
+    ADD COLUMN IF NOT EXISTS landcover_fracs     JSONB,
+    ADD COLUMN IF NOT EXISTS landcover_note      TEXT;

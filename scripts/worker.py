@@ -45,7 +45,49 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import firms  # noqa: E402
 
 DEFAULT_POLL_INTERVAL_MIN = 10
+WORKER_VERSION = "worker-1.0.0"
 _shutdown = False
+
+HEARTBEAT_SQL = """
+INSERT INTO worker_status (
+    worker_id, started_at, last_heartbeat_at, cycle_count,
+    last_cycle_status, last_error, last_inserted, version
+) VALUES (
+    %(worker_id)s, COALESCE(%(started_at)s, NOW()), NOW(),
+    %(cycle_count)s, %(status)s, %(error)s, %(inserted)s, %(version)s
+)
+ON CONFLICT (worker_id) DO UPDATE SET
+    last_heartbeat_at = NOW(),
+    cycle_count        = EXCLUDED.cycle_count,
+    last_cycle_status  = EXCLUDED.last_cycle_status,
+    last_error         = EXCLUDED.last_error,
+    last_inserted      = EXCLUDED.last_inserted,
+    version            = EXCLUDED.version
+"""
+
+
+def write_heartbeat(conn, worker_id, *, status="success", error=None,
+                    inserted=0, cycle_count=None, started_at=None):
+    """Record one worker heartbeat. Never raises (best-effort telemetry)."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(HEARTBEAT_SQL, {
+                "worker_id": worker_id,
+                "started_at": started_at,
+                "cycle_count": cycle_count if cycle_count is not None else 1,
+                "status": status,
+                "error": (error or "")[:400] or None,
+                "inserted": inserted,
+                "version": WORKER_VERSION,
+            })
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        print(f"[{datetime.now():%H:%M:%S}] heartbeat failed: {e}",
+              file=sys.stderr)
 
 
 def _sig_handler(signum, frame):
@@ -163,13 +205,30 @@ def main(argv=None):
           f"osm_context={cfg['osm_context']}",
           flush=True)
 
+    worker_id = os.getenv("HOSTNAME") or "worker-1"
+    cycle_count = 0
     while not _shutdown:
         cycle = datetime.now()
+        cycle_count += 1
+        cycle_status, cycle_error, cycle_inserted = "success", None, 0
         try:
             with psycopg.connect(**_conn_info()) as conn:
-                run_cycle(conn, map_key, cfg)
+                cycle_inserted = run_cycle(conn, map_key, cfg)
         except Exception as e:
+            cycle_status, cycle_error = "failed", str(e)
             print(f"[{datetime.now():%H:%M:%S}] cycle failed: {e}",
+                  file=sys.stderr)
+        # Heartbeat uses its own connection so a failed ingestion cycle still
+        # reports liveness to /api/health (write_heartbeat never raises).
+        try:
+            with psycopg.connect(**_conn_info()) as conn:
+                write_heartbeat(
+                    conn, worker_id, status=cycle_status, error=cycle_error,
+                    inserted=cycle_inserted, cycle_count=cycle_count,
+                    started_at=cycle,
+                )
+        except Exception as e:
+            print(f"[{datetime.now():%H:%M:%S}] heartbeat write failed: {e}",
                   file=sys.stderr)
         if args.once or _shutdown:
             break

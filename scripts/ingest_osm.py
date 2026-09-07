@@ -276,20 +276,43 @@ def normalize_facility_type(tags):
     return "unknown_industrial"
 
 
+def selectors_match(tags):
+    """Replicate the Overpass selector list on a raw dict of OSM tags.
+
+    Mirrors SELECTED_TAGS so an offline extract (ingest_osm_extract.py)
+    selects exactly the same objects the live Overpass query would.
+    """
+    industrial = tags.get("industrial")
+    landuse = tags.get("landuse")
+    man_made = tags.get("man_made")
+    power = tags.get("power")
+    if industrial:
+        return True
+    if landuse == "industrial":
+        return True
+    if man_made == "works":
+        return True
+    if power == "plant":
+        return True
+    if landuse == "quarry":
+        return True
+    return False
+
+
 def valid_osm(elem):
     return elem.get("type") in ("node", "way", "relation") and isinstance(
         elem.get("id"), int
     )
 
 
-def upsert_facilities(conn, facilities):
+def upsert_facilities(conn, facilities, source="osm/overpass"):
     upsert_sql = """
     INSERT INTO industrial_facilities (
         osm_type, osm_id, name, facility_type, tags, source,
         geometry, location
     ) VALUES (
         %(osm_type)s, %(osm_id)s, %(name)s, %(facility_type)s, %(tags)s,
-        'osm/overpass',
+        %(source)s,
         NULLIF(%(wkt)s, '')::geometry,
         CASE
             WHEN NULLIF(%(wkt)s, '') IS NOT NULL
@@ -301,6 +324,7 @@ def upsert_facilities(conn, facilities):
         name = EXCLUDED.name,
         facility_type = EXCLUDED.facility_type,
         tags = EXCLUDED.tags,
+        source = EXCLUDED.source,
         geometry = EXCLUDED.geometry,
         location = EXCLUDED.location,
         updated_at = NOW()
@@ -322,6 +346,7 @@ def upsert_facilities(conn, facilities):
                         "name": f["name"],
                         "facility_type": f["facility_type"],
                         "tags": json.dumps(f["tags"]),
+                        "source": source,
                         "wkt": f["wkt"],
                         "lon": f["lon"],
                         "lat": f["lat"],

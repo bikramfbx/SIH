@@ -207,6 +207,20 @@ SELECT json_build_object(
         SELECT COALESCE(json_agg(DISTINCT source ORDER BY source), '[]'::json)
         FROM ingestion_run_log
     ),
+    'per_source', (
+        SELECT COALESCE(json_object_agg(sub.source, sub.last_run ORDER BY sub.source), '{}'::json)
+        FROM (
+            SELECT DISTINCT ON (source) source,
+                json_build_object(
+                    'status', status, 'kind', kind,
+                    'finished_at', finished_at,
+                    'returned', returned, 'inserted', inserted,
+                    'error', error
+                ) AS last_run
+            FROM ingestion_run_log
+            ORDER BY source, finished_at DESC
+        ) sub
+    ),
     'inserted_24h', (
         SELECT COALESCE(SUM(inserted), 0)
         FROM ingestion_run_log
@@ -217,7 +231,36 @@ SELECT json_build_object(
         SELECT COUNT(*) FROM hotspot_enrichment WHERE class IS NOT NULL
     ),
     'total_hotspots', (SELECT COUNT(*) FROM hotspots),
-    'total_facilities', (SELECT COUNT(*) FROM industrial_facilities)
+    'total_facilities', (SELECT COUNT(*) FROM industrial_facilities),
+    'worker', (
+        SELECT json_build_object(
+            'configured', COUNT(*) > 0,
+            'alive', COUNT(*) > 0
+                AND MAX(last_heartbeat_at) > NOW() - INTERVAL '45 minutes',
+            'worker_id', MAX(worker_id),
+            'last_heartbeat_at', MAX(last_heartbeat_at),
+            'cycle_count', MAX(cycle_count),
+            'last_cycle_status', MAX(last_cycle_status),
+            'last_error', MAX(last_error),
+            'version', MAX(version)
+        )
+        FROM worker_status
+    ),
+    'vision', (
+        SELECT json_build_object(
+            'configured', FALSE,
+            'model_version', MAX(vision_model_version),
+            'inferred_count', COUNT(vision_model_version)
+        )
+        FROM hotspot_enrichment
+    ),
+    'landcover', (
+        SELECT json_build_object(
+            'configured', BOOL_OR(landcover_class IS NOT NULL),
+            'enriched_count', COUNT(landcover_class)
+        )
+        FROM hotspot_enrichment
+    )
 ) AS health
 """
 
@@ -274,6 +317,13 @@ def _parse_bbox(value):
     return w, s, e, n
 
 
+def _parse_date(value, name):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        raise ValueError(f"{name} must be a date in YYYY-MM-DD format")
+
+
 @app.get("/api/health")
 def health():
     db_up = _db_ok()
@@ -319,7 +369,11 @@ def hotspots_geojson(
 ):
     try:
         box = _parse_bbox(bbox) if bbox else None
-        filters, params = _build_hotspot_filters(class_, box, date_from, date_to, source)
+        d_from = _parse_date(date_from, "date_from") if date_from else None
+        d_to = _parse_date(date_to, "date_to") if date_to else None
+        if d_from and d_to and d_from > d_to:
+            raise ValueError("date_from must not be after date_to")
+        filters, params = _build_hotspot_filters(class_, box, d_from, d_to, source)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

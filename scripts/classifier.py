@@ -102,6 +102,10 @@ def build_features(hotspot, enrichment):
         "vision_flare_prob": _f(enrichment.get("vision_flare_prob")),
         "vision_facility_type": enrichment.get("vision_facility_type") or None,
         "vision_model_version": enrichment.get("vision_model_version") or None,
+        # Land-cover seam (optional; populated only when a land-cover provider
+        # is reachable and LAND_COVER=1). Never on the decision path on its
+        # own -- it only adds a documentation reason line when present.
+        "landcover_class": enrichment.get("landcover_class") or None,
     }
     return features
 
@@ -145,6 +149,8 @@ def apply_rules(f):
             reasons = [r for r in result if r]
             if _has_vision(f):
                 reasons += _vision_reasons(f)
+            if f.get("landcover_class"):
+                reasons.append(f"land cover: {f['landcover_class']} (informational)")
             return label, reasons
     return "unknown", ["no rule produced a decision"]
 

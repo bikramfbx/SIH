@@ -34,7 +34,11 @@ from datetime import date, datetime, timedelta
 import requests
 from dotenv import load_dotenv
 
-API_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
+# Overridable FIRMS base URL. Defaults to NASA's public area API. Tests and
+# offline deployments set FIRMS_BASE_URL to a local/compatible endpoint.
+API_BASE = os.getenv(
+    "FIRMS_BASE_URL", "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
+)
 DEFAULT_BBOX = "68,6,98,38"
 DEFAULT_DAYS = 2
 DEFAULT_RETRIES = 3
