@@ -26,41 +26,45 @@ class TestScreenRows:
         assert kept == []
         assert stats["total"] == 0
 
-    def test_no_rules_keep_nothing(self):
+    def test_no_facility_keeps_nothing(self):
         rows = [row(1, 1), row(2, 2)]
         kept, stats = firms_screen.screen_rows(rows, "S", set())
         assert kept == []
         assert stats["dropped"] == 2
 
-    def test_within_day_persistence(self):
-        rows = [row(10, 20), row(10, 20), row(1, 1)]
+    def test_within_day_persistence_is_stat_only(self):
+        rows = [row(10, 20, "90"), row(10, 20, "95"), row(1, 1)]
         kept, stats = firms_screen.screen_rows(
             rows, "S", set(), min_in_day=2)
-        assert len(kept) == 2
+        assert kept == []
         assert stats["in_day"] == 2
-        assert stats["kept"] == 2
+        assert stats["kept"] == 0
+        assert stats["dropped"] == 3
 
-    def test_prior_retained(self):
+    def test_prior_retention_is_stat_only(self):
         rows = [row(10, 20, "5"), row(1, 1, "7")]
         prior = {("S", (10.0, 20.0))}
         kept, stats = firms_screen.screen_rows(rows, "S", prior)
-        assert len(kept) == 1
+        assert kept == []
         assert stats["prior"] == 1
+        assert stats["kept"] == 0
 
-    def test_frp_threshold(self):
+    def test_high_frp_is_stat_only(self):
         rows = [row(0, 0, "100"), row(0, 1, "5")]
         kept, stats = firms_screen.screen_rows(rows, "S", set(), frp_mw=50)
-        assert [r["frp"] for r in kept] == ["100"]
+        assert kept == []
         assert stats["frp"] == 1
+        assert stats["kept"] == 0
 
-    def test_frp_percentile(self):
+    def test_high_frp_percentile_is_stat_only(self):
         rows = [row(0, i, str(i)) for i in range(1, 11)]  # frp 1..10
         kept, stats = firms_screen.screen_rows(
             rows, "S", set(), percentile=90.0)
-        assert [float(r["frp"]) for r in kept] == [9.0, 10.0]
+        assert kept == []
         assert stats["frp"] == 2
+        assert stats["kept"] == 0
 
-    def test_facility_cell_kept_without_other_rules(self):
+    def test_facility_cell_kept(self):
         rows = [row(10.005, 20.005, "3"), row(80, 0, "8")]
         facility_cells = {(10.0, 20.0)}
         kept, stats = firms_screen.screen_rows(
@@ -78,10 +82,29 @@ class TestScreenRows:
         assert len(kept) == 1
         assert stats["near_facility"] == 1
 
-    def test_far_from_facilities_still_dropped(self):
-        rows = [row(10.5, 20.5, "3"), row(11.5, 21.5, "4")]
+    def test_far_from_facilities_dropped_even_with_persistence(self):
+        rows = [row(10.5, 20.5, "3"), row(10.5, 20.5, "4")]
         facility_cells = {(10.0, 20.0)}
         kept, stats = firms_screen.screen_rows(
             rows, "S", set(), facility_cells=facility_cells, min_in_day=2)
         assert kept == []
         assert stats["near_facility"] == 0
+        assert stats["in_day"] == 2
+
+    def test_extended_reach_keeps_furthest_rows(self):
+        # default reach 5,000 m ~ 5 cells; a cell 3 cells away is kept
+        facility_cells = {(10.0, 20.0)}
+        rows = [row(10.03, 20.0, "3")]  # 3 cells ~3.3 km -> within 5 km reach
+        kept, stats = firms_screen.screen_rows(
+            rows, "S", set(), facility_cells=facility_cells,
+            facility_reach_m=5000.0)
+        assert len(kept) == 1
+        assert stats["kept"] == 1
+
+    def test_custom_reach_respects_radius(self):
+        facility_cells = {(10.0, 20.0)}
+        rows = [row(10.03, 20.0, "3")]  # ~3.3 km away
+        kept, _ = firms_screen.screen_rows(
+            rows, "S", set(), facility_cells=facility_cells,
+            facility_reach_m=2000.0)  # only ~2 cells -> drop
+        assert kept == []

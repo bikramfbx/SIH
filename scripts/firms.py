@@ -318,6 +318,7 @@ def ingest_source(conn, map_key, source, bbox, days=DEFAULT_DAYS, date_param=Non
             facility_cells=facility_cells,
             frp_mw=params["frp_mw"], percentile=params["percentile"],
             min_in_day=params["min_in_day"],
+            facility_reach_m=params["facility_reach_m"],
         )
         summary.screen = stats
         _record_screen(conn, source, bbox, days, date_param, stats, params,
@@ -344,6 +345,8 @@ def _screen_params():
         "min_in_day": int(os.getenv("FIRMS_SCREEN_MIN_IN_DAY", "2")),
         "frp_mw": float(frp_mw) if frp_mw else None,
         "percentile": float(pct) if pct else None,
+        "facility_reach_m": float(
+            os.getenv("FIRMS_SCREEN_FACILITY_REACH_M") or 5000.0),
     }
 
 

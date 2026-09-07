@@ -102,11 +102,11 @@
 
   <div class="filters">
     <div class="sub">Classification filter</div>
-    <button class="active" data-class="">All</button>
     <button data-class="industrial_fire"><span class="dot" style="background:var(--industrial-fire)"></span>Industrial fire</button>
     <button data-class="persistent_industrial_source"><span class="dot" style="background:var(--persistent-industrial-source)"></span>Persistent source</button>
     <button data-class="gas_flare"><span class="dot" style="background:var(--gas-flare)"></span>Gas flare</button>
     <button data-class="unknown"><span class="dot" style="background:var(--unknown)"></span>Unknown</button>
+    <button data-class="*"><span class="dot" style="background:linear-gradient(90deg,#d32f2f,#fb8c00,#fbc02d)"></span>All industrial</button>
   </div>
 
   <div class="legend">
@@ -185,8 +185,15 @@ function renderFeatures(data) {
   if (data.features.length === 1) map.fitBounds(layer.getBounds(), { maxZoom: 9 });
 }
 
+const INDUSTRIAL_CLASSES = ["industrial_fire", "persistent_industrial_source", "gas_flare"];
+
 function loadHotspots(cls) {
-  const url = "/api/hotspots.geojson" + (cls ? "?class=" + encodeURIComponent(cls) : "");
+  // "*" (or no selection) shows all industrially-relevant hotspot classes.
+  // The database stores only industrially-screened detections; there is no
+  // "all raw fires" view by design.
+  const classes = (cls === "*" || !cls) ? INDUSTRIAL_CLASSES : [cls];
+  const q = classes.map(c => "class=" + encodeURIComponent(c)).join("&");
+  const url = "/api/hotspots.geojson" + (q ? "?" + q : "");
   fetch(url).then(r => r.json()).then(renderFeatures).catch(err => console.error(err));
 }
 
@@ -239,7 +246,8 @@ document.querySelectorAll(".filters button").forEach(btn => {
 });
 
 loadStats();
-loadHotspots("");
+document.querySelector('.filters button[data-class="*"]').classList.add("active");
+loadHotspots("*");
 </script>
 </body>
 </html>

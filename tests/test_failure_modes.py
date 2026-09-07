@@ -168,3 +168,15 @@ class TestApiValidation:
             self.api._parse_date("0932", "date_from")
         with pytest.raises(ValueError):
             self.api._parse_date("not-a-date", "date_from")
+
+    def test_grid_sql_formatting(self):
+        # resolution mode must substitute the where-clause exactly once and the
+        # grid query must never reuse the per-row feature fragment.
+        assert self.api.GEOJSON_GRID_SQL.count("{where}") == 1
+        assert "{features}" not in self.api.GEOJSON_GRID_SQL
+        sql = self.api.GEOJSON_GRID_SQL.format(where="TRUE")
+        assert "floor(h.latitude / %(res)s)" in sql
+
+    def test_grid_sql_reports_resolution_keyword(self):
+        # the grid variant emits a resolution_deg property for clients
+        assert "resolution_deg" in self.api.GEOJSON_GRID_SQL

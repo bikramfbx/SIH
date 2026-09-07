@@ -97,6 +97,57 @@ FROM (
 ) s
 """
 
+# Grid-aggregated variant used when ``resolution`` (degrees) is requested.
+# One representative detection per ~resolution-deg cell.  Cell center is the
+# emitted geometry; properties carry aggregate stats (count, mean/max FRP) so
+# the payload stays small regardless of hotspot density.
+GEOJSON_GRID_SQL = """
+SELECT COALESCE(json_agg(feat ORDER BY feat->'properties'->>'class',
+                         feat->'properties'->>'acq_datetime' DESC), '[]'::json)
+FROM (
+    SELECT DISTINCT ON (
+            floor(h.latitude / %(res)s)::int,
+            floor(h.longitude / %(res)s)::int)
+        json_build_object(
+            'type', 'Feature',
+            'geometry', json_build_object(
+                'type', 'Point',
+                'coordinates', json_build_array(
+                    (floor(h.longitude / %(res)s)::numeric + 0.5) * %(res)s,
+                    (floor(h.latitude / %(res)s)::numeric + 0.5) * %(res)s
+                )
+            ),
+            'properties', json_build_object(
+                'id', h.id,
+                'source', h.source,
+                'class', COALESCE(e.class, 'unclassified'),
+                'acq_datetime', to_char(
+                    h.acq_date + ((h.acq_time / 100) * INTERVAL '1 hour')
+                              + (mod(h.acq_time, 100) * INTERVAL '1 minute'),
+                    'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                'nearest_facility_name', e.nearest_facility_name,
+                'resolution_deg', %(res)s,
+                'cell_count', COUNT(*) OVER (
+                    PARTITION BY floor(h.latitude / %(res)s)::int,
+                                 floor(h.longitude / %(res)s)::int),
+                'mean_frp', ROUND(AVG(h.frp::numeric) OVER (
+                    PARTITION BY floor(h.latitude / %(res)s)::int,
+                                 floor(h.longitude / %(res)s)::int), 2),
+                'max_frp', MAX(h.frp) OVER (
+                    PARTITION BY floor(h.latitude / %(res)s)::int,
+                                 floor(h.longitude / %(res)s)::int)
+            )
+        ) AS feat
+    FROM hotspots h
+    LEFT JOIN hotspot_enrichment e ON e.hotspot_id = h.id
+    WHERE {where}
+    ORDER BY floor(h.latitude / %(res)s)::int,
+             floor(h.longitude / %(res)s)::int,
+             h.acq_date DESC, h.acq_time DESC
+    LIMIT %(limit)s
+) s
+"""
+
 DETAIL_SQL = """
 SELECT json_build_object(
     'id', h.id,
@@ -368,6 +419,11 @@ def hotspots_geojson(
     source: list[str] | None = Query(None, description="FIRMS source; repeatable."),
     limit: int = Query(50000, ge=1, le=200000,
                        description="Max features returned per request."),
+    resolution: float | None = Query(None, ge=0.01, le=5.0,
+                                     description=(
+                                         "Optional grid cell size in degrees; "
+                                         "returns one aggregated feature per "
+                                         "cell to bound payload size.")),
 ):
     try:
         box = _parse_bbox(bbox) if bbox else None
@@ -379,15 +435,20 @@ def hotspots_geojson(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    is_grid = resolution is not None
     try:
         with db.connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(GEOJSON_COUNT_SQL.format(where=filters), params)
                 total = cur.fetchone()[0]
-                cur.execute(
-                    GEOJSON_SQL.format(where=filters, features=GEOJSON_FEATURES),
-                    {**params, "limit": limit},
-                )
+                if is_grid:
+                    query = GEOJSON_GRID_SQL.format(where=filters)
+                    params = {**params, "res": resolution, "limit": limit}
+                else:
+                    query = GEOJSON_SQL.format(where=filters,
+                                               features=GEOJSON_FEATURES)
+                    params = {**params, "limit": limit}
+                cur.execute(query, params)
                 features = cur.fetchone()[0]
     except psycopg.Error as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -399,6 +460,7 @@ def hotspots_geojson(
         "TotalFeatures": total,
         "numberMatched": total,
         "truncated": total > limit,
+        "resolution": resolution,
     }
 
 
@@ -494,7 +556,12 @@ def worker_once(request: Request):
 
 @app.post("/api/worker/maintenance")
 def worker_maintenance(request: Request):
-    """Run retention pruning (guard: X-Worker-Token)."""
+    """Run candidate pruning (guard: X-Worker-Token).
+
+    Deletes hotspots that are far from every industrial facility with no
+    industrial class and no vision evidence -- the same rules as the prune
+    dry-run. Idempotent; safe to re-run after a screen-tightened ingest.
+    """
     if not _worker_authorized(request.headers):
         raise HTTPException(status_code=401, detail="unauthorized")
     _load_scripts()
@@ -503,8 +570,12 @@ def worker_maintenance(request: Request):
 
         dry_run = request.query_params.get("dry_run", "").lower() in ("1", "true")
         with db.connect() as conn:
-            out = prune_hotspots.prune(conn, dry_run=dry_run)
-        return out
+            res = prune_hotspots.analyze(conn)
+            if not dry_run:
+                deleted = prune_hotspots.do_commit(conn)
+                res["deleted"] = deleted
+            res["dry_run"] = dry_run
+        return res
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
