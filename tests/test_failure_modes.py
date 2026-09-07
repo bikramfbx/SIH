@@ -143,7 +143,7 @@ class TestApiValidation:
     def _load_api(self):
         sys.path.insert(0, os.path.join(
             os.path.dirname(__file__), ".."))
-        import api.main as api_main
+        import api.app.main as api_main
         self.api = api_main
 
     def test_bbox_valid(self):

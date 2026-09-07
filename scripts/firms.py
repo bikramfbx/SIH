@@ -40,11 +40,39 @@ API_BASE = os.getenv(
     "FIRMS_BASE_URL", "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
 )
 DEFAULT_BBOX = "68,6,98,38"
+GLOBAL_BBOX = "world"
 DEFAULT_DAYS = 2
 DEFAULT_RETRIES = 3
 DEFAULT_TIMEOUT_S = 60
 MAX_WINDOW_DAYS = 5
 SUPPORTED_SOURCES = ("VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT")
+
+
+def normalize_bbox(bbox):
+    """Normalize a FIRMS area parameter.
+
+    Accepts the literal ``world`` (whole world; the FIRMS Area API token) or
+    a "west,south,east,north" box. Returns the canonical lowercase token.
+    """
+    if bbox is None:
+        raise ValueError("bbox is required")
+    token = str(bbox).strip().lower()
+    if token == GLOBAL_BBOX:
+        return GLOBAL_BBOX
+    if token == "global":
+        raise ValueError(
+            "FIRMS Area API has no 'global' area; use 'world' or a bounding box")
+    try:
+        w, s, e, n = (float(v) for v in token.split(","))
+    except (ValueError, AttributeError) as exc:
+        raise ValueError(f"bbox must be 'world' or 'west,south,east,north', "
+                         f"got {bbox!r}") from exc
+    if not (-180 <= w <= 180 and -180 <= e <= 180
+            and -90 <= s <= 90 and -90 <= n <= 90):
+        raise ValueError(f"bbox out of range: {bbox!r}")
+    if not (w < e and s < n):
+        raise ValueError(f"bbox must satisfy west<east and south<north: {bbox!r}")
+    return token
 
 _INSERT_COLUMNS = (
     "source", "satellite", "instrument",
@@ -92,6 +120,8 @@ class InsertSummary:
     inserted: int = 0
     duplicates: int = 0
     invalid: int = 0
+    fetched: int = 0
+    screen: dict | None = None
     inserted_ids: list[int] = field(default_factory=list)
 
 
@@ -131,6 +161,7 @@ def fetch_firms_csv(map_key, source, bbox, days=DEFAULT_DAYS, date_param=None,
     days = int(days)
     if not (1 <= days <= MAX_WINDOW_DAYS):
         raise ValueError(f"FIRMS day window must be in [1..{MAX_WINDOW_DAYS}], got {days}")
+    bbox = normalize_bbox(bbox)
 
     if isinstance(date_param, str):
         date_param = date_param.strip() or None
@@ -253,8 +284,13 @@ def bulk_insert(conn, rows, collect_ids=True):
 
 def ingest_source(conn, map_key, source, bbox, days=DEFAULT_DAYS, date_param=None,
                   retries=DEFAULT_RETRIES, timeout=DEFAULT_TIMEOUT_S,
-                  collect_ids=True):
-    """Fetch + insert one FIRMS source window. Returns an InsertSummary."""
+                  collect_ids=True, screen_kind="firms"):
+    """Fetch + screen + insert one FIRMS source window.
+
+    When screening is enabled (FIRMS_SCREEN_ENABLED=1), the fetched FOOTPRINT
+    is reduced to *industrial candidates* before permanent storage; nothing is
+    stored-then-pruned. Returns an InsertSummary.
+    """
     load_env()
     csv_text = fetch_firms_csv(
         map_key=map_key,
@@ -268,8 +304,86 @@ def ingest_source(conn, map_key, source, bbox, days=DEFAULT_DAYS, date_param=Non
     rows = parse_csv(csv_text)
     for row in rows:
         row["_source"] = source
-    summary = bulk_insert(conn, rows, collect_ids=collect_ids)
+
+    summary = InsertSummary(total=len(rows), fetched=len(rows))
+    kept = rows
+    if _screen_enabled():
+        from firms_screen import load_prior_cells, screen_rows
+        params = _screen_params()
+        prior_cells = load_prior_cells(conn, source, days=params["prior_days"])
+        kept, stats = screen_rows(
+            rows, source, prior_cells,
+            frp_mw=params["frp_mw"], percentile=params["percentile"],
+            min_in_day=params["min_in_day"],
+        )
+        summary.screen = stats
+        _record_screen(conn, source, bbox, days, date_param, stats, params,
+                       kind=screen_kind)
+
+    inserted = bulk_insert(conn, kept, collect_ids=collect_ids)
+    summary.inserted = inserted.inserted
+    summary.duplicates = inserted.duplicates
+    summary.invalid = inserted.invalid
+    summary.inserted_ids = inserted.inserted_ids
     return summary
+
+
+def _screen_enabled():
+    return os.getenv("FIRMS_SCREEN_ENABLED", "0").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _screen_params():
+    frp_mw = os.getenv("FIRMS_SCREEN_FRP_MW", "").strip()
+    pct = os.getenv("FIRMS_SCREEN_FRP_PERCENTILE", "").strip()
+    return {
+        "prior_days": int(os.getenv("FIRMS_SCREEN_PRIOR_DAYS", "90")),
+        "min_in_day": int(os.getenv("FIRMS_SCREEN_MIN_IN_DAY", "2")),
+        "frp_mw": float(frp_mw) if frp_mw else None,
+        "percentile": float(pct) if pct else None,
+    }
+
+
+SCREEN_LOG_SQL = """
+INSERT INTO screening_run_log (
+    kind, source, bbox, date_from, days,
+    fetched, kept, dropped, in_day, prior, frp,
+    percentile_pct, frp_mw
+) VALUES (
+    %(kind)s, %(source)s, %(bbox)s, %(date_from)s, %(days)s,
+    %(fetched)s, %(kept)s, %(dropped)s, %(in_day)s, %(prior)s, %(frp)s,
+    %(percentile_pct)s, %(frp_mw)s
+)
+"""
+
+
+def _record_screen(conn, source, bbox, days, date_param, stats, params, kind):
+    if date_param is None:
+        date_from = None
+    elif isinstance(date_param, str):
+        date_from = date_param.strip() or None
+    else:
+        date_from = date_param.isoformat()
+    try:
+        bbox_norm = normalize_bbox(bbox)
+    except ValueError:
+        bbox_norm = bbox
+    with conn.cursor() as cur:
+        cur.execute(SCREEN_LOG_SQL, {
+            "kind": kind,
+            "source": source,
+            "bbox": bbox_norm,
+            "date_from": date_from,
+            "days": int(days),
+            "fetched": stats["total"],
+            "kept": stats["kept"],
+            "dropped": stats["dropped"],
+            "in_day": stats["in_day"],
+            "prior": stats["prior"],
+            "frp": stats["frp"],
+            "percentile_pct": params["percentile"],
+            "frp_mw": params["frp_mw"],
+        })
 
 
 RUN_LOG_SQL = """

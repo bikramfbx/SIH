@@ -182,6 +182,9 @@ def enrich(conn, conn_info=None, hotspot_ids=None, persist_radius=None,
     persist_denom = float(persist_denom or os.getenv(
         "PERSIST_DENOM", DEFAULT_PERSIST_DENOM))
 
+    with conn.cursor() as cur:
+        cur.execute("SET statement_timeout = 0")
+
     ids_param = _ids_array(hotspot_ids)
     with conn.cursor() as cur:
         cur.execute(ENRICH_SQL, {
@@ -196,6 +199,7 @@ def enrich(conn, conn_info=None, hotspot_ids=None, persist_radius=None,
     if classify:
         with conn.cursor() as cur:
             cur.execute(FETCH_SQL, {"ids": ids_param})
+            updates = []
             for r in cur.fetchall():
                 hotspot = {
                     "id": r[0], "frp": r[1], "daynight": r[2],
@@ -224,12 +228,14 @@ def enrich(conn, conn_info=None, hotspot_ids=None, persist_radius=None,
                     "vision_model_version": r[23],
                 }
                 label, reasons = classifier.classify(hotspot, enrichment)
-                cur.execute(UPDATE_SQL, {
+                updates.append({
                     "hotspot_id": r[0],
                     "class": label,
                     "reasons": json.dumps(reasons),
                 })
                 class_counts[label] = class_counts.get(label, 0) + 1
+            if updates:
+                cur.executemany(UPDATE_SQL, updates)
 
     class_counts.update(land_cover.persist_if_enabled(conn, ids_param))
     return {"enriched": enriched, "class_counts": class_counts}

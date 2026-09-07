@@ -1,5 +1,14 @@
 # Environment
 .env
+.env.deploy
+.env.local
+.env.prod
+.env.*.local
+!.env.example
+
+# Vercel / Supabase CLI local state
+.vercel/
+.supabase/
 
 # Python
 __pycache__/
@@ -35,3 +44,5 @@ tmp/
 *.osm.pbf
 *.osm
 dl.log
+.vercel
+.env*

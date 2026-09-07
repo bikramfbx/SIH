@@ -5,13 +5,15 @@ per-hotspot detail, aggregate stats, and pipeline health. Also serves the
 Leaflet frontend from ``frontend/`` at the site root.
 
 Run (from repo root):
-    uvicorn api.main:app --host 0.0.0.0 --port 8000
+    uvicorn api.app.main:app --host 0.0.0.0 --port 8000
 """
 
 import os
+import secrets
+import sys
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -425,7 +427,92 @@ def stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_WORKER_HEADER = "X-Worker-Token"
+
+
+def _scripts_dir():
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(here, "..", "..", "scripts")
+
+
+def _load_scripts():
+    scripts = _scripts_dir()
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+
+
+def _worker_authorized(headers):
+    """Constant-time check against the server-side WORKER_TOKEN secret."""
+    expected = os.getenv("WORKER_TOKEN") or ""
+    if not expected:
+        return False
+    provided = headers.get(_WORKER_HEADER, "")
+    return secrets.compare_digest(str(provided), expected)
+
+
+def _worker_cfg():
+    import firms
+
+    return {
+        "sources": firms.parse_sources(
+            os.getenv("FIRMS_SOURCES", ",".join(firms.SUPPORTED_SOURCES))),
+        "bbox": os.getenv("FIRMS_BBOX", firms.DEFAULT_BBOX),
+        "days": int(os.getenv("FIRMS_DAYS", firms.DEFAULT_DAYS)),
+        "osm_context": os.getenv("WORKER_OSM_CONTEXT", "0") == "1",
+    }
+
+
+@app.post("/api/worker/once")
+def worker_once(request: Request):
+    """Run exactly one ingestion+enrichment cycle (guard: X-Worker-Token)."""
+    if not _worker_authorized(request.headers):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    _load_scripts()
+    map_key = os.getenv("FIRMS_MAP_KEY")
+    if not map_key:
+        raise HTTPException(status_code=500, detail="FIRMS_MAP_KEY not set")
+    try:
+        import worker
+
+        cfg = _worker_cfg()
+        started = datetime.now(timezone.utc)
+        with db.connect() as conn:
+            inserted = worker.run_cycle(conn, map_key, cfg)
+        return {
+            "ok": True,
+            "inserted": inserted,
+            "sources": cfg["sources"],
+            "bbox": cfg["bbox"],
+            "days": cfg["days"],
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "duration_s": round(
+                (datetime.now(timezone.utc) - started).total_seconds(), 2),
+        }
+    except Exception as e:  # noqa: BLE001 - keep serverless response bounded
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/worker/maintenance")
+def worker_maintenance(request: Request):
+    """Run retention pruning (guard: X-Worker-Token)."""
+    if not _worker_authorized(request.headers):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    _load_scripts()
+    try:
+        import prune_hotspots
+
+        dry_run = request.query_params.get("dry_run", "").lower() in ("1", "true")
+        with db.connect() as conn:
+            out = prune_hotspots.prune(conn, dry_run=dry_run)
+        return out
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Serve the Leaflet frontend as the site root. Must be mounted last so the
-# /api routes above take precedence.
-_frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
-app.mount("/", StaticFiles(directory=_frontend_dir, html=True), name="frontend")
+# /api routes above take precedence. Conditional so the serverless bundle can
+# run without the frontend/ directory present.
+_frontend_dir = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+if os.path.isdir(_frontend_dir):
+    app.mount("/", StaticFiles(directory=_frontend_dir, html=True),
+              name="frontend")

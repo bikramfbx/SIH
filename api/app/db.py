@@ -16,13 +16,20 @@ except Exception:
 
 
 def connection_params():
-    return {
+    params = {
         "dbname": os.getenv("POSTGRES_DB"),
         "user": os.getenv("POSTGRES_USER"),
         "password": os.getenv("POSTGRES_PASSWORD"),
         "host": os.getenv("POSTGRES_HOST", "localhost"),
         "port": os.getenv("POSTGRES_PORT", "5432"),
     }
+    sslmode = os.getenv("POSTGRES_SSLMODE")
+    if sslmode:
+        params["sslmode"] = sslmode
+    timeout = os.getenv("POSTGRES_CONNECT_TIMEOUT")
+    if timeout:
+        params["connect_timeout"] = int(timeout)
+    return params
 
 
 def connect():

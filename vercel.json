@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "functions": {
+    "api/handler.py": {
+      "maxDuration": 300,
+      "includeFiles": "**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/handler" },
+    { "source": "/(.*)", "destination": "/frontend/index.html" }
+  ]
+}
