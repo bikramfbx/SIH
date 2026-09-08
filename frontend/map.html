@@ -35,10 +35,6 @@
 
   /* Clean anomaly dots: no border, just the class color with a faint glow. */
   .hs { stroke: none !important; }
-  .hs-industrial_fire { filter: drop-shadow(0 0 4px rgba(224, 92, 62, 0.6)); }
-  .hs-persistent_industrial_source { filter: drop-shadow(0 0 4px rgba(226, 161, 94, 0.6)); }
-  .hs-gas_flare { filter: drop-shadow(0 0 4px rgba(234, 201, 92, 0.6)); }
-  .hs-unknown { filter: drop-shadow(0 0 4px rgba(154, 150, 141, 0.45)); }
 
   /* "All anomalies" toggle (top-right): show every marker, no country overlay. */
   #pts-toggle {
@@ -280,7 +276,7 @@ const map = L.map("map", {
   worldCopyJump: false,
   maxBounds: [[-85, -180], [85, 180]],
   maxBoundsViscosity: 1.0,
-}).setView([24, 18], startZoomBase());
+}).setView([22.5, 79.5], startZoomBase());
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
   maxZoom: 17, noWrap: true, className: "tile-dark",
   attribution: "Tiles &copy; <a href=\"https://www.esri.com/en-us/legal/terms/full-master-agreement\">Esri</a> &mdash; Esri, Maxar, Earthstar Geographics",
@@ -590,10 +586,17 @@ function buildMarkers() {
     if (iso && pt.iso !== iso) continue;
     if (!bounds.contains([pt.lat, pt.lon])) continue;
     const r = markRadius(z);
+    const color = COLORS[pt.cls] || "#9a968d";
+    // Painted halo beneath each dot (a soft filled circle, not a blur filter)
+    // so that stacked dots blend cleanly instead of flaring/pixelating.
+    L.circleMarker([pt.lat, pt.lon], {
+      radius: r * 1.9, stroke: false, interactive: false,
+      fillColor: color, fillOpacity: 0.16, className: "hs hs-halo",
+    }).addTo(markerLayer);
     L.circleMarker([pt.lat, pt.lon], {
       radius: r, stroke: false,
-      fillColor: COLORS[pt.cls] || "#9a968d", fillOpacity: 0.95,
-      className: "hs hs-" + (pt.cls || "unknown"),
+      fillColor: color, fillOpacity: 0.95,
+      className: "hs hs-dot hs-" + (pt.cls || "unknown"),
     }).addTo(markerLayer)
       .bindPopup(popupHTML(pt))
       .on("click", () => selectHotspot(pt, true));
