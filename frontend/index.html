@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PyroSphere — Industrial Thermal Intelligence</title>
-<meta name="description" content="AI-enabled geospatial monitoring of industrial thermal anomalies. From a global noise floor of fires, a curated list of industrial-classified hotspots.">
+<title>PyroSphere — Industrial Thermal Monitoring</title>
+<meta name="description" content="Data-driven geospatial screening of industrial thermal anomalies. From a global noise floor of fires, a curated list of industrial-classified hotspots.">
 <link rel="preload" as="image" href="/assets/parallax/skybox.png">
 <link rel="preload" as="image" href="/assets/parallax/PowerPlant.png">
 <link rel="preload" as="image" href="/assets/parallax/FirefighterHero.png">
@@ -38,20 +38,20 @@
   .nav {
     position: fixed; top: 0; left: 0; right: 0; z-index: 60;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 32px;
+    padding: 9px 30px;
     background: rgba(11, 13, 16, 0.55);
     -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--hairline);
   }
   .nav__brand {
-    font-family: var(--serif); font-size: 15px; letter-spacing: 0.35em;
+    font-family: var(--serif); font-size: 14px; letter-spacing: 0.35em;
     text-transform: uppercase; color: var(--ink); text-decoration: none;
   }
   .nav__brand span { color: var(--accent); }
-  .nav__links { display: flex; gap: 4px; align-items: center; }
+  .nav__links { display: flex; gap: 2px; align-items: center; }
   .nav__links a {
-    color: var(--dim); text-decoration: none; font-size: 13px;
-    padding: 8px 14px; border-radius: 6px; letter-spacing: 0.06em;
+    color: var(--dim); text-decoration: none; font-size: 12px;
+    padding: 5px 11px; border-radius: 6px; letter-spacing: 0.06em;
     transition: color 0.2s, background 0.2s;
   }
   .nav__links a:hover { color: var(--ink); background: rgba(255,255,255,0.05); }
@@ -136,43 +136,55 @@
   .parallax__title-wrap > * { position: relative; z-index: 1; }
 
   .parallax__kicker {
-    font-size: 12px; letter-spacing: 0.5em; text-transform: uppercase;
+    font-size: 14px; letter-spacing: 0.4em; text-transform: uppercase;
     color: #f2ebdd; margin: 0 0 16px; font-weight: 500;
     text-shadow: 0 2px 10px rgba(9, 11, 13, 0.6);
   }
   .parallax__title {
     font-family: var(--serif);
-    font-size: clamp(64px, 11vw, 150px);
+    font-size: clamp(68px, 12vw, 160px);
     font-weight: 400; letter-spacing: 0.08em;
     margin: 0; line-height: 0.95; color: #f3f0e8;
     text-shadow: 0 2px 40px rgba(0,0,0,0.35);
   }
-  /* Liquid glass "Sphere": translucent frosted fill, diagonal specular sheen
-     and a faint rim. background-clip:text keeps it glyph-shaped, so the sky
-     shows through the glass instead of fighting an opaque accent color. */
-  .parallax__title span {
+  /* "Sphere" = refractive liquid glass. Rendering is progressive:
+     the default (no-JS, reduced-motion, or unsupported browser) state is
+     translucent warm ivory text. When JS confirms background-clip:text
+     support, body.glass-on swaps in a REAL refraction: the hero's three
+     parallax images are duplicated pixel-aligned inside the glyphs (JS keeps
+     the copy glued to the scrolling backdrop), then an SVG turbulence
+     feDisplacementMap bends them like a lens, a whisper of blur +
+     brightness/saturation boost finishes the transmission, and a thin warm
+     ivory stroke reads as the specular rim. No WebGL, no backdrop-filter,
+     no flat opacity -- the glass genuinely distorts the scene behind it. */
+  .parallax__title .sphere { display: inline-block; }
+  .parallax__title .sphere__glyphs {
+    display: inline-block;
+    color: rgba(246, 240, 226, 0.88);
+    -webkit-text-fill-color: rgba(246, 240, 226, 0.88);
+    text-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.25),
+      0 8px 28px rgba(0, 0, 0, 0.35);
+  }
+  body.glass-on .parallax__title .sphere__glyphs {
     color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-repeat: no-repeat;
     background-image:
-      linear-gradient(115deg,
-          rgba(255,255,255,0.30) 18%,
-          rgba(255,255,255,0.92) 42%,
-          rgba(255,255,255,0.55) 54%,
-          rgba(255,255,255,0.24) 72%),
-      linear-gradient(180deg,
-          rgba(255,255,255,0.94) 0%,
-          rgba(255,255,255,0.45) 50%,
-          rgba(255,255,255,0.66) 100%);
+      url("/assets/parallax/FirefighterHero.png"),
+      url("/assets/parallax/PowerPlant.png"),
+      url("/assets/parallax/skybox.png");
     background-clip: text;
     -webkit-background-clip: text;
-    -webkit-text-stroke: 1px rgba(255,255,255,0.28);
+    filter: url(#sphere-liquid);
+    -webkit-text-stroke: 1px rgba(248, 244, 236, 0.55);
     text-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.18),
-      0 10px 34px rgba(0, 0, 0, 0.32),
-      0 0 60px rgba(255, 255, 255, 0.18);
+      0 0 1px rgba(255, 255, 255, 0.35),
+      0 0 14px rgba(255, 255, 255, 0.12);
   }
   .parallax__subtitle {
-    font-size: clamp(15px, 2vw, 21px);
-    letter-spacing: 0.28em; text-transform: uppercase;
+    font-size: clamp(16px, 2.2vw, 22px);
+    letter-spacing: 0.24em; text-transform: uppercase;
     color: #ddd6c6; margin: 18px 0 0; font-weight: 300;
     text-shadow: 0 2px 12px rgba(9, 11, 13, 0.65);
   }
@@ -230,20 +242,103 @@
   .sources li::before { content: "▸"; color: var(--accent); }
 
   .cta {
-    text-align: center; padding: 140px 32px;
     position: relative;
-    background: linear-gradient(to bottom, var(--bg) 0%, #131004 100%);
+    padding: 220px 32px 200px;
+    text-align: center;
+    background: linear-gradient(to bottom, var(--bg) 0%, #0e0c08 100%);
+    overflow: hidden;
   }
-  .cta h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(30px, 5vw, 54px); margin: 0 0 14px; }
-  .cta .section__body { margin: 0 auto; }
+  .cta__glow {
+    position: absolute; left: 50%; top: 55%;
+    width: 900px; max-width: 92vw; height: 660px;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse 50% 50% at center,
+        rgba(224, 120, 62, 0.15) 0%,
+        rgba(224, 120, 62, 0.05) 42%,
+        rgba(224, 120, 62, 0) 70%);
+    pointer-events: none;
+  }
+  /* whisper of grid texture, faded toward the edges */
+  .cta::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px);
+    background-size: 72px 72px;
+    -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 62%, #000 30%, transparent 76%);
+    mask-image: radial-gradient(ellipse 90% 80% at 50% 62%, #000 30%, transparent 76%);
+    pointer-events: none;
+  }
+  .cta__inner { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; }
+  .cta__eyebrow {
+    margin: 0 0 22px; font-size: 12px; letter-spacing: 0.4em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .cta__eyebrow em { color: var(--accent-2); font-style: normal; }
+  .cta h2 {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(32px, 5vw, 56px); margin: 0 0 20px;
+    color: var(--ink); text-shadow: 0 2px 40px rgba(0,0,0,0.4);
+  }
+  .cta__body {
+    margin: 0 auto 38px; max-width: 560px;
+    color: var(--dim); font-size: 16px; line-height: 1.7;
+  }
+  .cta__status {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; margin: 0 0 8px;
+    font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--dim);
+  }
+  .cta__status .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(224,120,62,0.55);
+    animation: cta-pulse 2.2s ease-out infinite;
+  }
+  @keyframes cta-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(224,120,62,0.55); }
+    70%  { box-shadow: 0 0 0 9px rgba(224,120,62,0); }
+    100% { box-shadow: 0 0 0 0 rgba(224,120,62,0); }
+  }
+  .cta__substatus {
+    margin: 0 0 44px; font-size: 11px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--faint);
+  }
   .cta__btn {
-    display: inline-block; margin-top: 40px;
-    padding: 18px 52px; font-size: 15px; letter-spacing: 0.24em;
-    text-transform: uppercase; color: #0b0d10; text-decoration: none;
-    background: var(--accent); border-radius: 2px; font-weight: 600;
-    transition: background 0.25s, transform 0.25s;
+    display: inline-flex; align-items: center; gap: 14px;
+    padding: 18px 34px;
+    background: rgba(11, 13, 16, 0.55);
+    border: 1px solid rgba(224, 120, 62, 0.5);
+    border-radius: 8px;
+    color: var(--ink); text-decoration: none;
+    font-size: 14px; letter-spacing: 0.26em; text-transform: uppercase;
+    transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
   }
-  .cta__btn:hover { background: var(--accent-2); transform: translateY(-2px); }
+  .cta__btn:hover {
+    border-color: rgba(224, 120, 62, 0.9);
+    box-shadow:
+      0 0 0 1px rgba(224, 120, 62, 0.18),
+      0 0 30px rgba(224, 120, 62, 0.22),
+      inset 0 0 18px rgba(224, 120, 62, 0.06);
+    transform: translateY(-2px);
+  }
+  .cta__btn-arrow {
+    font-size: 16px; line-height: 1; color: var(--accent-2);
+    transition: transform 0.25s;
+  }
+  .cta__btn:hover .cta__btn-arrow { transform: translate(3px, -3px); }
+  .cta__meta {
+    display: flex; justify-content: center;
+    margin: 46px 0 0; padding: 0; list-style: none;
+    font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--faint);
+  }
+  .cta__meta li:not(:last-child) {
+    border-right: 1px solid var(--hairline);
+    padding-right: 28px; margin-right: 28px;
+  }
 
   footer {
     max-width: 1060px; margin: 0 auto; padding: 40px 32px 48px;
@@ -254,17 +349,24 @@
   footer a:hover { color: var(--ink); }
 
   @media (max-width: 760px) {
-    .nav { padding: 14px 18px; }
+    .nav { padding: 8px 16px; }
     .nav__links a { font-size: 12px; padding: 7px 9px; }
     .nav__links a.nav__cta { display: none; } /* keep nav airy on mobile; CTA below */
     .section { padding: 88px 24px; }
     .parallax__title-wrap { margin-top: calc(-1 * 16vh); }
     .pipeline li { flex-direction: column; gap: 8px; }
+    .cta { padding: 140px 24px 120px; }
+    .cta__meta li:not(:last-child) { padding-right: 18px; margin-right: 18px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .parallax__layer { will-change: auto; }
     .parallax__title { text-shadow: 0 2px 24px rgba(0,0,0,0.5); }
+    .cta__status .live-dot { animation: none; box-shadow: 0 0 0 1px rgba(224,120,62,0.4); }
+    .cta__btn,
+    .cta__btn:hover { transform: none; transition: none; }
+    .cta__btn-arrow,
+    .cta__btn:hover .cta__btn-arrow { transform: none; transition: none; }
   }
 </style>
 </head>
@@ -278,6 +380,28 @@
     <a class="nav__cta" href="/map">Map</a>
   </div>
 </nav>
+
+<!-- Shared SVG filter pipeline for the refracting "Sphere". Rendered at 0x0;
+     referenced by CSS via filter:url(#sphere-liquid), so it never paints. -->
+<svg class="sphere-filter" aria-hidden="true" focusable="false" width="0" height="0"
+     style="position:absolute; overflow:hidden; z-index:-1;">
+  <defs>
+    <filter id="sphere-liquid" x="-40%" y="-40%" width="180%" height="180%"
+            color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.008"
+                    numOctaves="2" seed="7" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="14"
+                         xChannelSelector="R" yChannelSelector="G" result="disp"/>
+      <feGaussianBlur in="disp" stdDeviation="0.5" result="soft"/>
+      <feComponentTransfer in="soft" result="bright">
+        <feFuncR type="linear" slope="1.05"/>
+        <feFuncG type="linear" slope="1.05"/>
+        <feFuncB type="linear" slope="1.05"/>
+      </feComponentTransfer>
+      <feColorMatrix in="bright" type="saturate" values="1.15"/>
+    </filter>
+  </defs>
+</svg>
 
 <div class="parallax" id="top">
   <div class="parallax__sticky">
@@ -293,9 +417,9 @@
         </div>
         <div class="parallax__layer parallax__layer--title" data-parallax-layer="3">
           <div class="parallax__title-wrap">
-            <p class="parallax__kicker">Industrial Thermal Intelligence</p>
-            <h1 class="parallax__title">Pyro<span>Sphere</span></h1>
-            <p class="parallax__subtitle">AI-enabled geospatial monitoring of industrial thermal anomalies</p>
+            <p class="parallax__kicker">Industrial Thermal Monitoring</p>
+            <h1 class="parallax__title"><span class="sphere sphere--pyro"><span class="sphere__glyphs">Pyro</span></span><span class="sphere sphere--sphere"><span class="sphere__glyphs">Sphere</span></span></h1>
+            <p class="parallax__subtitle">Data-driven geospatial monitoring of industrial thermal anomalies</p>
           </div>
         </div>
         <div class="parallax__layer parallax__layer--fg" data-parallax-layer="4">
@@ -387,7 +511,7 @@
 
   <section class="section" id="data">
     <p class="section__label">Data Sources</p>
-    <h2>Open, explainable, auditable.</h2>
+    <h2>Open, transparent, auditable.</h2>
     <ul class="sources">
       <li>NASA FIRMS / VIIRS — near-real-time thermal anomaly detections</li>
       <li>OpenStreetMap — industrial and power infrastructure geometry</li>
@@ -399,15 +523,29 @@
 </main>
 
 <section class="cta" id="map-cta">
-  <h2>See the signal.</h2>
-  <div class="section__body">
-    <p>Explore live industrial thermal monitoring across the globe — filters, classifications and per-hotspot evidence.</p>
+  <div class="cta__glow" aria-hidden="true"></div>
+  <div class="cta__inner">
+    <p class="cta__eyebrow"><em>03</em> / Live System</p>
+    <h2>See the signal.</h2>
+    <p class="cta__body">Track industrial thermal activity as it emerges. Move from
+    global patterns to individual hotspots, with classification and evidence at
+    every step.</p>
+    <p class="cta__status"><span class="live-dot" aria-hidden="true"></span>Live Feed Active</p>
+    <p class="cta__substatus">VIIRS NRT · Global Coverage</p>
+    <a class="cta__btn" href="/map">
+      <span>Explore Live Map</span>
+      <span class="cta__btn-arrow" aria-hidden="true">↗</span>
+    </a>
+    <ul class="cta__meta">
+      <li>Worldwide</li>
+      <li>Near-Real-Time</li>
+      <li>Evidence-Based</li>
+    </ul>
   </div>
-  <a class="cta__btn" href="/map">Explore Live Map</a>
 </section>
 
 <footer>
-  <span>PyroSphere — Industrial Thermal Intelligence</span>
+  <span>PyroSphere — Industrial Thermal Monitoring</span>
   <span>
     <a href="#top">Back to top</a> &nbsp;·&nbsp;
     <a href="/map">Map</a>
@@ -467,6 +605,81 @@
   window.addEventListener("beforeunload", function () {
     if (lenis) lenis.destroy();
   });
+})();
+</script>
+
+<script>
+/* Liquid-glass "Sphere" driver. Keeps the duplicated backdrop inside the
+   glyphs glued to the real parallax behind the wordmark, and only activates
+   when background-clip:text + the SVG filter are actually available. Under
+   prefers-reduced-motion or unsupported engines the page keeps the readable
+   warm-ivory fallback already defined in CSS. */
+(function () {
+  var spans = Array.prototype.slice.call(
+    document.querySelectorAll(".parallax__title .sphere__glyphs"));
+  var sticky = document.querySelector(".parallax__sticky");
+  if (!spans.length || !sticky) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  var clipOk = false;
+  try { clipOk = CSS.supports("-webkit-background-clip", "text"); } catch (e) {}
+  if (!clipOk) return;
+
+  var layers = [1, 2, 4].map(function (n) {
+    return document.querySelector('[data-parallax-layer="' + n + '"]');
+  });
+  if (!layers[0] || !layers[1] || !layers[2]) return;
+
+  document.body.classList.add("glass-on");
+
+  var W = 0, H = 0, boxH = 0, w = 0, h = 0, cropX = 0, cropY = 0;
+  var x0 = [], y0 = [];
+
+  function measure() {
+    W = sticky.offsetWidth;
+    H = sticky.offsetHeight;
+    boxH = H * 4 / 3;
+    var s = Math.max(W / 1448, boxH / 1086);
+    w = Math.round(1448 * s);
+    h = Math.round(1086 * s);
+    cropX = (W - w) / 2;   // object-position:center horizontal crop of the art
+    cropY = (boxH - h) / 2; // vertical crop (top:-33.333% + cover)
+    var sr = sticky.getBoundingClientRect();
+    var bgSize = w + "px " + h + "px, " + w + "px " + h + "px, " + w + "px " + h + "px";
+    x0 = []; y0 = [];
+    spans.forEach(function (sp) {
+      var gr = sp.getBoundingClientRect();
+      x0.push(gr.left - sr.left);
+      y0.push(gr.top - sr.top);
+      sp.style.backgroundSize = bgSize;
+    });
+  }
+  measure();
+  window.addEventListener("resize", measure);
+  if (document.readyState !== "complete") window.addEventListener("load", measure);
+
+  /* GSAP yPercent -> px, derived from the same scrub math as the timeline
+     (sky 30 / plant 18 / fg 4 over a 100vh hero), so each word's copy tracks
+     the backdrop exactly without reading transforms every frame. */
+  var YPS = { "1": 30, "2": 18, "4": 4 };
+  var lastY = -1;
+  function pos(y, o) { return -(y + H / 3 - cropY - o); }
+  function update() {
+    var sy = window.scrollY || 0;
+    if (sy === lastY) return;
+    lastY = sy;
+    var p = Math.max(0, Math.min(sy / H, 1));
+    spans.forEach(function (sp, i) {
+      var px = -(x0[i] - cropX);
+      var posStr = layers.map(function (el) {
+        var o = p * (YPS[el.getAttribute("data-parallax-layer")] || 0) * H / 100;
+        return px.toFixed(2) + "px " + pos(y0[i], o).toFixed(2) + "px";
+      }).join(", ");
+      sp.style.backgroundPosition = posStr;
+    });
+  }
+  update();
+  if (window.gsap && gsap.ticker) gsap.ticker.add(update);
+  else window.addEventListener("scroll", update, { passive: true });
 })();
 </script>
 </body>
