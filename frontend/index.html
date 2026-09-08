@@ -120,9 +120,25 @@
     padding: 0 24px;
     margin-top: calc(-1 * 18vh); /* sit between plant (top stack) and firefighter band */
   }
+  /* Soft cinematic scrim behind the hero text keeps every line legible
+     against the bright sky without adding a boxed backdrop. */
+  .parallax__title-wrap::before {
+    content: "";
+    position: absolute; left: 50%; top: 50%;
+    width: 130vmin; height: 64vmin;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse 50% 50% at center,
+        rgba(9, 11, 13, 0.52) 0%,
+        rgba(9, 11, 13, 0.28) 55%,
+        rgba(9, 11, 13, 0) 72%);
+    pointer-events: none;
+  }
+  .parallax__title-wrap > * { position: relative; z-index: 1; }
+
   .parallax__kicker {
     font-size: 12px; letter-spacing: 0.5em; text-transform: uppercase;
-    color: var(--accent-2); margin: 0 0 16px; font-weight: 500;
+    color: #f2ebdd; margin: 0 0 16px; font-weight: 500;
+    text-shadow: 0 2px 10px rgba(9, 11, 13, 0.6);
   }
   .parallax__title {
     font-family: var(--serif);
@@ -131,11 +147,34 @@
     margin: 0; line-height: 0.95; color: #f3f0e8;
     text-shadow: 0 2px 40px rgba(0,0,0,0.35);
   }
-  .parallax__title span { color: var(--accent); }
+  /* Liquid glass "Sphere": translucent frosted fill, diagonal specular sheen
+     and a faint rim. background-clip:text keeps it glyph-shaped, so the sky
+     shows through the glass instead of fighting an opaque accent color. */
+  .parallax__title span {
+    color: transparent;
+    background-image:
+      linear-gradient(115deg,
+          rgba(255,255,255,0.30) 18%,
+          rgba(255,255,255,0.92) 42%,
+          rgba(255,255,255,0.55) 54%,
+          rgba(255,255,255,0.24) 72%),
+      linear-gradient(180deg,
+          rgba(255,255,255,0.94) 0%,
+          rgba(255,255,255,0.45) 50%,
+          rgba(255,255,255,0.66) 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-stroke: 1px rgba(255,255,255,0.28);
+    text-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.18),
+      0 10px 34px rgba(0, 0, 0, 0.32),
+      0 0 60px rgba(255, 255, 255, 0.18);
+  }
   .parallax__subtitle {
     font-size: clamp(15px, 2vw, 21px);
     letter-spacing: 0.28em; text-transform: uppercase;
-    color: var(--dim); margin: 18px 0 0; font-weight: 300;
+    color: #ddd6c6; margin: 18px 0 0; font-weight: 300;
+    text-shadow: 0 2px 12px rgba(9, 11, 13, 0.65);
   }
 
   .parallax__fade {
