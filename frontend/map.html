@@ -492,33 +492,83 @@ function renderOverview() {
     if (lb.line) overviewLayer.removeLayer(lb.line);
   }
   labels = [];
-  for (const ctry of countries) {
-    const cc = countryCounts[ctry.id];
-    if (!cc || !cc.total) continue;
-    const a = anchorPointFor(ctry);
+
+  // Only one label at a time: the selected country, offset near it and tied
+  // to it with a leader line (countries stay purely color-coded otherwise).
+  const selCtry = countries.find((c) => String(c.id) === String(selectedCountry));
+  if (selCtry) {
+    const cc = countryCounts[selCtry.id];
+    const a = anchorPointFor(selCtry);
+    const pos = labelPosFor(selCtry, a);
+    const n = cc && cc.total ? cc.total : 0;
     const icon = L.divIcon({
       className: "cl-label-wrap",
-      html: '<div class="cl-label' + (selectedCountry === ctry.id ? " sel" : "") +
-        '">' + esc(ctry.name) + '<span class="cl-n">' + cc.total + "</span></div>",
+      html: '<div class="cl-label sel">' + esc(selCtry.name) +
+        (n ? '<span class="cl-n">' + n + "</span>" : "") + "</div>",
       iconSize: null,
     });
-    const m = L.marker([a.lat, a.lon], { icon, interactive: true, keyboard: false });
-    m.on("click", () => {
-      const id = String(ctry.id);
-      if (id === selectedCountry) clearCountry(true);
-      else selectCountry(id);
+    const m = L.marker([pos.lat, pos.lon], {
+      icon, interactive: true, keyboard: false, zIndexOffset: 1000,
     });
-    const c = centroidOf(ctry.polys);
+    m.on("click", () => clearCountry(true));
     let line = null;
-    if (c && (Math.abs(c[0] - a.lon) > 0.4 || Math.abs(c[1] - a.lat) > 0.4)) {
-      line = L.polyline([[c[1], c[0]], [a.lat, a.lon]], {
-        color: "rgba(230,190,150,0.30)", weight: 1, dashArray: "2 4", interactive: false,
+    const bp = boundaryPointFor(a, pos, selCtry.polys);
+    if (bp) {
+      line = L.polyline([[bp.lat, bp.lon], [pos.lat, pos.lon]], {
+        color: "rgba(230,190,150,0.45)", weight: 1.2, dashArray: "2 4", interactive: false,
       });
       overviewLayer.addLayer(line);
     }
     overviewLayer.addLayer(m);
-    labels.push({ iso: ctry.id, marker: m, line });
+    labels.push({ iso: selCtry.id, marker: m, line });
   }
+}
+
+// Screen-space "callout" placement: try to drop the label just outside the
+// country next to its anchor (bounds-aware, so labels never spill off-screen).
+function labelPosFor(ctry, a) {
+  const c = map.latLngToContainerPoint([a.lat, a.lon]);
+  const size = map.getSize();
+  const candidates = [
+    { dx: 54, dy: -22 },   // upper-right (classic callout)
+    { dx: -54, dy: -22 },  // upper-left
+    { dx: 46, dy: 32 },    // lower-right
+    { dx: -46, dy: 32 },   // lower-left
+    { dx: 0, dy: -50 },    // above
+    { dx: 0, dy: 50 },     // below
+  ];
+  let fallback = null;
+  for (const cand of candidates) {
+    const p = L.point(c.x + cand.dx, c.y + cand.dy);
+    if (p.x < 18 || p.y < 18 || p.x > size.x - 18 || p.y > size.y - 18) continue;
+    const ll = map.containerPointToLatLng(p);
+    if (ll.lng < -180 || ll.lng > 180 || ll.lat < -85 || ll.lat > 85) continue;
+    if (!fallback) fallback = { lat: ll.lat, lon: ll.lng };
+    if (!pointInPoly(ll.lng, ll.lat, ctry.polys)) return { lat: ll.lat, lon: ll.lng };
+  }
+  if (fallback) return fallback;
+  // Anchor off-viewport: clamp the label back to the visible area.
+  const cx = Math.min(Math.max(c.x, 24), size.x - 24);
+  const cy2 = Math.min(Math.max(c.y, 24), size.y - 24);
+  const llc = map.containerPointToLatLng(L.point(cx, cy2));
+  return { lat: llc.lat, lon: llc.lng };
+}
+
+// Last point inside the country along the path anchor -> label (the spot the
+// leader line attaches to, so it starts at the country edge, not its middle).
+function boundaryPointFor(a, pos, polys) {
+  if (a.lat === pos.lat && a.lon === pos.lon) return null;
+  const steps = 60;
+  for (let i = 1; i < steps; i++) {
+    const f = i / steps;
+    const lat = a.lat + (pos.lat - a.lat) * f;
+    const lon = a.lon + (pos.lon - a.lon) * f;
+    if (!pointInPoly(lon, lat, polys)) {
+      const f0 = (i - 1) / steps;
+      return { lat: a.lat + (pos.lat - a.lat) * f0, lon: a.lon + (pos.lon - a.lon) * f0 };
+    }
+  }
+  return { lat: pos.lat, lon: pos.lon };
 }
 
 // ---------------------------------------------------------------------------
