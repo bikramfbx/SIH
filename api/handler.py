@@ -1,4 +1,4 @@
-"""Vercel serverless entry point for the SIH FastAPI application.
+"""Vercel serverless entry point for the PyroSphere FastAPI application.
 
 Vercel builds every top-level ``.py`` file under ``api/`` as a function;
 helper modules live in ``api/app/`` (bundled via ``includeFiles``).

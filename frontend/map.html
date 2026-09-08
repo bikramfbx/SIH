@@ -738,6 +738,11 @@ function selectHotspot(pt, withZoom) {
 function loadDetail(id) {
   fetch("/api/hotspots/" + id).then((r) => r.json()).then((d) => {
     const e = d.enrichment || {};
+    let reasons = e.reasons;
+    if (typeof reasons === "string") {
+      try { reasons = JSON.parse(reasons || "[]"); } catch (_) { reasons = []; }
+    }
+    if (!Array.isArray(reasons)) reasons = [];
     const rows = [
       ["Classification", DISPLAY[e.class] || "—"],
       ["Source", esc(d.source + " / " + d.satellite)],
@@ -757,7 +762,7 @@ function loadDetail(id) {
       "<h2>" + badge(e.class) + "</h2>" +
       rows.map((r) => '<div class="row"><span>' + r[0] + "</span><span>" + r[1] + "</span></div>").join("") +
       "<h2>Why</h2><ul class='reasons'>" +
-      (e.reasons && e.reasons.length ? e.reasons.map((r) => "<li>" + esc(r) + "</li>").join("") : "<li>no reasons</li>") +
+      (reasons.length ? reasons.map((r) => "<li>" + esc(r) + "</li>").join("") : "<li>no reasons</li>") +
       "</ul>";
   }).catch(() => {
     document.getElementById("detail").innerHTML = '<p class="empty">Could not load detail.</p>';

@@ -1,4 +1,4 @@
-"""SIH thermal-anomaly API (final backend).
+"""PyroSphere thermal-anomaly API (final backend).
 
 Serves classified hotspot GeoJSON (with GIS + temporal + vision evidence),
 per-hotspot detail, aggregate stats, and pipeline health. Also serves the
@@ -23,7 +23,7 @@ import psycopg
 from . import db
 
 API_VERSION = "2.0.0"
-app = FastAPI(title="SIH Thermal Anomaly API", version=API_VERSION)
+app = FastAPI(title="PyroSphere Thermal Anomaly API", version=API_VERSION)
 
 app.add_middleware(
     CORSMiddleware,

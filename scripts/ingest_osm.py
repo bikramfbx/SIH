@@ -89,7 +89,7 @@ OVERPASS_URLS = [
     if u
 ]
 
-USER_AGENT = "SIH-Industrial-Ingest/0.1 (+https://github.com/bikramfbx/SIH)"
+USER_AGENT = "PyroSphere-Industrial-Ingest/0.1 (+https://github.com/bikramfbx/pyrosphere)"
 
 DEFAULT_BBOX = "68,6,98,38"
 DEFAULT_CHUNKS = 1
