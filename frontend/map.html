@@ -7,201 +7,686 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root {
-    --industrial-fire: #d32f2f;
-    --persistent-industrial-source: #fb8c00;
-    --gas-flare: #fbc02d;
-    --industrial-fire: #d32f2f;
-    --unknown: #616161;
-    --unclassified: #9e9e9e;
-    --bg: #070a12;
-    --panel: rgba(10, 15, 28, 0.97);
-    --hairline: rgba(150, 175, 220, 0.14);
-    --ink: #e6e9f4;
-    --dim: #93a0b8;
-    --faint: #5c6b85;
-    --accent: #ffd700;
+    --industrial-fire: #e05c3e;
+    --persistent-industrial-source: #e2a15e;
+    --gas-flare: #eac95c;
+    --unknown: #9a968d;
+    --bg: #0b0d10;
+    --panel: rgba(14, 13, 11, 0.96);
+    --hairline: rgba(230, 190, 150, 0.13);
+    --ink: #ede9e2;
+    --dim: #a49f95;
+    --faint: #6e6a61;
+    --accent: #e0783e;
+    --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif;
     background: var(--bg); color: var(--ink); }
-  #map { position: absolute; inset: 0 0 0 320px; background: var(--bg); }
+  #map { position: absolute; inset: 0 0 0 340px; background: #000; }
+  .leaflet-container { background: #000 !important; }
+  .leaflet-control-attribution {
+    background: rgba(8, 8, 9, 0.55) !important;
+    color: #9a968d;
+    backdrop-filter: none;
+  }
+  .leaflet-control-attribution a { color: #e0783e; }
+  .leaflet-control-attribution a:hover { color: #f0a06a; }
 
-  /* Darken the keyless Esri dark-gray canvas toward a faint navy backdrop. */
+  /* Clean anomaly dots: no border, just the class color with a faint glow. */
+  .hs { stroke: none !important; }
+  .hs-industrial_fire { filter: drop-shadow(0 0 4px rgba(224, 92, 62, 0.6)); }
+  .hs-persistent_industrial_source { filter: drop-shadow(0 0 4px rgba(226, 161, 94, 0.6)); }
+  .hs-gas_flare { filter: drop-shadow(0 0 4px rgba(234, 201, 92, 0.6)); }
+  .hs-unknown { filter: drop-shadow(0 0 4px rgba(154, 150, 141, 0.45)); }
+
+  /* "All anomalies" toggle (top-right): show every marker, no country overlay. */
+  #pts-toggle {
+    position: absolute; top: 14px; right: 14px; z-index: 600;
+    display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+    font-size: 12px; letter-spacing: 0.05em; line-height: 1;
+    border: 1px solid rgba(230, 190, 150, 0.28); border-radius: 999px;
+    background: rgba(11, 13, 16, 0.82); color: var(--dim); cursor: pointer;
+    user-select: none; transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  #pts-toggle:hover { border-color: rgba(230, 190, 150, 0.5); color: var(--ink); }
+  #pts-toggle.on { border-color: var(--accent); color: var(--ink);
+    background: rgba(224, 120, 62, 0.15); }
+  #pts-toggle .dot { width: 9px; height: 9px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 6px currentColor; }
+  #pts-toggle.on .dot { box-shadow: 0 0 10px var(--accent); }
+
+  /* Dark scrollbars to match the industrial theme. */
+  html { scrollbar-color: #1b1a19 transparent; scrollbar-width: thin; }
+  #sidebar { scrollbar-width: thin; scrollbar-color: #2a2622 transparent; }
+  #sidebar::-webkit-scrollbar { width: 10px; }
+  #sidebar::-webkit-scrollbar-thumb {
+    background: #2a2622; border-radius: 6px;
+    border: 3px solid transparent; background-clip: content-box;
+  }
+  #sidebar::-webkit-scrollbar-thumb:hover { background: #3a352f;
+    border: 3px solid transparent; background-clip: content-box; }
+  #sidebar::-webkit-scrollbar-track { background: transparent; }
+
+  /* Warm dark-industrial treatment for the keyless Esri canvas tiles. */
   .tile-dark .leaflet-tile {
-    filter: brightness(0.55) contrast(1.08) sepia(0.45) hue-rotate(200deg) saturate(1.6);
+    filter: brightness(0.52) contrast(1.1) saturate(0.72) sepia(0.18);
+  }
+  #map::after {
+    content: "";
+    position: absolute; inset: 0; z-index: 500; pointer-events: none;
+    background: radial-gradient(ellipse 120% 100% at 50% 42%,
+        rgba(0, 0, 0, 0) 55%, rgba(4, 5, 6, 0.55) 100%);
   }
 
   #sidebar {
-    position: absolute; top: 0; left: 0; bottom: 0; width: 320px;
+    position: absolute; top: 0; left: 0; bottom: 0; width: 340px;
     background: var(--panel);
     border-right: 1px solid var(--hairline);
-    overflow-y: auto; padding: 16px;
+    overflow-y: auto; padding: 18px 18px 28px;
   }
-  h1 { font-size: 17px; margin: 0 0 4px; letter-spacing: 0.02em; }
+  h1 { font-family: var(--serif); font-size: 19px; margin: 0 0 4px;
+    letter-spacing: 0.02em; font-weight: 400; color: var(--ink); }
   #sidebar h1::before { content: "▮ "; color: var(--accent); }
-  .sub { color: var(--dim); font-size: 12px; margin-bottom: 12px; }
-  .stats { font-size: 12px; color: var(--ink); margin-bottom: 14px; line-height: 1.6; }
+  .sub { color: var(--dim); font-size: 12px; margin-bottom: 10px; letter-spacing: 0.04em; }
+  .sub a { color: var(--faint); text-decoration: none; }
+  .sub a:hover { color: var(--ink); }
+
+  .stats { font-size: 12px; color: var(--dim); margin: 14px 0 12px;
+    line-height: 1.65; border: 1px solid var(--hairline); border-radius: 6px;
+    padding: 10px 12px; background: rgba(255, 255, 255, 0.02); }
   .stats b { color: var(--accent); font-weight: 600; }
+  .stats .cls { color: var(--ink); }
+  .stats .cls i { font-style: normal; font-weight: 700; }
 
   .filters { margin-bottom: 14px; }
+  .filters .sub { margin-bottom: 6px; }
   .filters button {
-    display: inline-block; margin: 2px; padding: 4px 10px; font-size: 12px;
-    border: 1px solid rgba(150, 175, 220, 0.25); border-radius: 14px;
-    cursor: pointer; background: rgba(255, 255, 255, 0.03); color: var(--ink);
+    display: block; width: 100%; margin: 4px 0; padding: 7px 12px;
+    font-size: 12px; letter-spacing: 0.05em; text-align: left;
+    border: 1px solid rgba(230, 190, 150, 0.2); border-radius: 5px;
+    cursor: pointer; background: rgba(255, 255, 255, 0.03); color: var(--dim);
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
   }
-  .filters button:hover { border-color: rgba(150, 175, 220, 0.5); }
-  .filters button.active { color: #0a0a0a; border-color: #fff; background: #fff; }
-  .filters button[data-class="industrial_fire"].active,
-  .filters button[data-class="persistent_industrial_source"].active,
-  .filters button[data-class="gas_flare"].active,
-  .filters button[data-class="unknown"].active {
-    border-color: transparent; color: #fff;
-    background: var(--industrial-fire);
-  }
-  .filters button[data-class="persistent_industrial_source"].active { background: var(--persistent-industrial-source); }
-  .filters button[data-class="gas_flare"].active { background: var(--gas-flare); }
-  .filters button[data-class="unknown"].active { background: var(--unknown); }
-  .filters button .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px;
-    vertical-align: baseline; box-shadow: 0 0 5px currentColor; }
+  .filters button:hover { border-color: rgba(230, 190, 150, 0.45); color: var(--ink); }
+  .filters button.active { border-color: var(--accent); color: var(--ink);
+    background: rgba(224, 120, 62, 0.12); }
+  .filters button .dot { display: inline-block; width: 9px; height: 9px;
+    border-radius: 50%; margin-right: 8px; vertical-align: baseline;
+    box-shadow: 0 0 6px currentColor; }
 
-  .legend { font-size: 12px; color: var(--dim); margin-bottom: 14px; }
+  .legend { font-size: 12px; color: var(--dim); margin: 14px 0; }
   .legend div { margin: 3px 0; }
-  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+  .legend .dot { display: inline-block; width: 10px; height: 10px;
+    border-radius: 50%; margin-right: 8px; vertical-align: baseline; }
+
+  #country { display: none; margin: 14px 0; }
+  #country.visible { display: block; }
+  #country h2 { font-family: var(--serif); font-weight: 400; font-size: 20px;
+    margin: 0 0 2px; color: var(--ink); }
+  #country .co-iso { color: var(--faint); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; margin-bottom: 10px; }
+  #country .co-total { font-size: 12px; color: var(--dim); margin-bottom: 10px; }
+  #country .co-total b { color: var(--accent); }
+  .co-close { display: inline-block; margin: 0 0 10px; font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
+    cursor: pointer; border-bottom: 1px solid var(--hairline); }
+  .co-close:hover { color: var(--ink); }
+  .co-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    margin-bottom: 12px; }
+  .co-counts .cc { border: 1px solid var(--hairline); border-radius: 5px;
+    padding: 7px 10px; font-size: 12px; background: rgba(255, 255, 255, 0.02); }
+  .co-counts .cc .n { font-weight: 700; color: var(--ink); font-size: 15px; }
+  .co-counts .cc .l { color: var(--dim); font-size: 11px; margin-top: 1px; }
+
+  .co-list { border-top: 1px solid var(--hairline); }
+  .co-list h3 { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 12px 0 8px; font-weight: 500; }
+  .co-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px;
+    border-bottom: 1px dashed rgba(230, 190, 150, 0.14); cursor: pointer;
+    font-size: 12px; }
+  .co-row:hover { background: rgba(224, 120, 62, 0.06); }
+  .co-row .r-dot { width: 8px; height: 8px; border-radius: 50%;
+    box-shadow: 0 0 5px currentColor; flex: none; }
+  .co-row .r-t { color: var(--ink); }
+  .co-row .r-m { margin-left: auto; color: var(--faint); font-size: 11px; }
 
   #detail { font-size: 13px; }
-  #detail h2 { font-size: 14px; margin: 14px 0 6px; color: var(--ink); }
+  #detail h2 { font-size: 18px; margin: 16px 0 6px; color: var(--ink);
+    font-family: var(--serif); font-weight: 400; }
   #detail .row { display: flex; justify-content: space-between; padding: 3px 0;
-    border-bottom: 1px dashed rgba(150, 175, 220, 0.16); }
+    border-bottom: 1px dashed rgba(230, 190, 150, 0.14); }
   #detail .row span:first-child { color: var(--dim); }
   #detail .row span:last-child { text-align: right; padding-left: 12px; }
   #detail .reasons { margin-top: 8px; padding-left: 16px; color: var(--ink); }
   #detail .reasons li { margin: 3px 0; }
-  .badge {
-    display: inline-block; padding: 2px 9px; border-radius: 12px; color: #fff;
-    font-size: 11px; font-weight: 600; text-transform: lowercase;
-  }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 12px;
+    color: #fff; font-size: 11px; font-weight: 600; }
   .empty { color: var(--faint); font-size: 12px; }
 
   .leaflet-popup-content { max-width: 260px; }
   .leaflet-popup-content-wrapper {
-    background: rgba(10, 15, 28, 0.97); color: var(--ink);
-    border: 1px solid rgba(150, 175, 220, 0.3); border-radius: 3px;
+    background: rgba(14, 13, 11, 0.97); color: var(--ink);
+    border: 1px solid rgba(230, 190, 150, 0.3); border-radius: 4px;
   }
-  .leaflet-popup-tip { background: rgba(10, 15, 28, 0.97); }
+  .leaflet-popup-tip { background: rgba(14, 13, 11, 0.97); }
   .leaflet-popup-content .p { margin: 2px 0; font-size: 12px; }
   .leaflet-popup-content .p b { color: var(--dim); font-weight: 500; }
-  .leaflet-bar a { background: #0f1626; color: var(--ink); }
-  .leaflet-bar a:hover { background: #16213a; }
+  .leaflet-bar a { background: #12110f; color: var(--ink); }
+  .leaflet-bar a:hover { background: #1d1a16; }
+
+  /* Country polygons (choropleth) are clickable: select toggles the country. */
+  path.leaflet-interactive { cursor: pointer; }
+
+  /* Global anchor style for the clickable country labels. */
+  .cl-label {
+    position: absolute; transform: translate(-50%, -50%);
+    display: inline-block; white-space: nowrap;
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink); cursor: pointer;
+    background: rgba(7, 10, 12, 0.78);
+    border: 1px solid rgba(230, 190, 150, 0.35);
+    border-radius: 4px; padding: 3px 8px;
+    pointer-events: auto; user-select: none;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  }
+  .cl-label .cl-n { color: var(--accent); font-weight: 700; margin-left: 5px; }
+  .cl-label:hover { border-color: var(--accent); }
+  .cl-label.sel { border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(224, 120, 62, 0.4);
+    background: rgba(20, 15, 10, 0.92); }
+  .leaflet-marker-icon.cl-label { background: transparent; border: none; }
 </style>
 </head>
 <body>
 <div id="sidebar">
   <h1>PyroSphere</h1>
   <div class="sub">FIRMS VIIRS NRT · industrial-context classification</div>
-  <div class="sub"><a href="/" style="color:var(--faint)">← Back to home</a></div>
+  <div class="sub"><a href="/">← Back to home</a></div>
   <div class="stats" id="stats">Loading stats…</div>
 
   <div class="filters">
     <div class="sub">Classification filter</div>
-    <button data-class="industrial_fire"><span class="dot" style="background:var(--industrial-fire)"></span>Industrial fire</button>
-    <button data-class="persistent_industrial_source"><span class="dot" style="background:var(--persistent-industrial-source)"></span>Persistent source</button>
-    <button data-class="gas_flare"><span class="dot" style="background:var(--gas-flare)"></span>Gas flare</button>
-    <button data-class="unknown"><span class="dot" style="background:var(--unknown)"></span>Unknown</button>
-    <button data-class="*"><span class="dot" style="background:linear-gradient(90deg,#d32f2f,#fb8c00,#fbc02d)"></span>All industrial</button>
+    <button data-filter="industrial_fire"><span class="dot" style="background:var(--industrial-fire)"></span>Industrial fire</button>
+    <button data-filter="persistent_industrial_source"><span class="dot" style="background:var(--persistent-industrial-source)"></span>Persistent source</button>
+    <button data-filter="gas_flare"><span class="dot" style="background:var(--gas-flare)"></span>Gas flare</button>
+    <button data-filter="unknown"><span class="dot" style="background:var(--unknown)"></span>Other industrial anomalies</button>
+    <button data-filter="*"><span class="dot" style="background:linear-gradient(90deg,#e05c3e,#e2a15e,#eac95c)"></span>All industrial</button>
   </div>
 
   <div class="legend">
-    <div><span class="dot" style="background:var(--industrial-fire)"></span>industrial_fire</div>
-    <div><span class="dot" style="background:var(--persistent-industrial-source)"></span>persistent_industrial_source</div>
-    <div><span class="dot" style="background:var(--gas-flare)"></span>gas_flare</div>
-    <div><span class="dot" style="background:var(--unknown)"></span>unknown</div>
+    <div><span class="dot" style="background:var(--industrial-fire)"></span>Industrial fire</div>
+    <div><span class="dot" style="background:var(--persistent-industrial-source)"></span>Persistent source</div>
+    <div><span class="dot" style="background:var(--gas-flare)"></span>Gas flare</div>
+    <div><span class="dot" style="background:var(--unknown)"></span>Other industrial anomalies</div>
   </div>
 
-  <div id="detail"><p class="empty">Click a marker to see details.</p></div>
+  <div id="country"></div>
+  <div id="detail"><p class="empty">Click a country label or an anomaly marker to see details.</p></div>
 </div>
 <div id="map"></div>
+<div id="pts-toggle" title="Show all anomalies and hide country borders/names">
+  <span class="dot"></span><span>All anomalies</span>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+// ---------------------------------------------------------------------------
+// Display model. Backend class values are kept as-is; only the presentation
+// label changes ("unknown" -> "Other industrial anomalies").
+// ---------------------------------------------------------------------------
+const CLASSES = ["industrial_fire", "persistent_industrial_source", "gas_flare", "unknown"];
+const DISPLAY = {
+  industrial_fire: "Industrial fire",
+  persistent_industrial_source: "Persistent source",
+  gas_flare: "Gas flare",
+  unknown: "Other industrial anomalies",
+};
 const COLORS = {
-  industrial_fire: "#d32f2f",
-  persistent_industrial_source: "#fb8c00",
-  gas_flare: "#fbc02d",
-  unknown: "#616161",
-  unclassified: "#9e9e9e",
+  industrial_fire: "#e05c3e",
+  persistent_industrial_source: "#e2a15e",
+  gas_flare: "#eac95c",
+  unknown: "#9a968d",
 };
 const FMT_M = (m) => (m == null ? "—" : m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m");
+const OVERVIEW_ZOOM = 6; // zoom < 6 = country overview; zoom >= 6 = anomaly points
 
 function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
+function dot(cls) {
+  return '<span class="r-dot" style="background:' + (COLORS[cls] || "#9a968d") +
+    ';color:' + (COLORS[cls] || "#9a968d") + '"></span>';
+}
+function badge(cls) {
+  const c = COLORS[cls] || "#9a968d";
+  return '<span class="badge" style="background:' + c + '">' +
+    esc(DISPLAY[cls] || cls) + "</span>";
+}
 
-const map = L.map("map", { maxZoom: 17 }).setView([22, 82], 5);
-L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+// ---------------------------------------------------------------------------
+// Map. Single non-wrapping world: noWrap tiles + hard bounds + a dynamic
+// minZoom that always fits the entire world in view (blank space around it is
+// intentional -- there is exactly one map, never duplicated copies).
+// ---------------------------------------------------------------------------
+let minZoomBase = () => Math.max(1, Math.floor(Math.log2((window.innerWidth - 340) / 256)));
+// Default view: a comfortable overview (not the fully-zoomed-out minimum).
+let startZoomBase = () => Math.min(OVERVIEW_ZOOM - 1, Math.max(minZoomBase() + 2, 4));
+const map = L.map("map", {
   maxZoom: 17,
-  className: "tile-dark",
+  minZoom: minZoomBase(),
+  worldCopyJump: false,
+  maxBounds: [[-85, -180], [85, 180]],
+  maxBoundsViscosity: 1.0,
+}).setView([24, 18], startZoomBase());
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+  maxZoom: 17, noWrap: true, className: "tile-dark",
   attribution: "Tiles &copy; <a href=\"https://www.esri.com/en-us/legal/terms/full-master-agreement\">Esri</a> &mdash; Esri, Maxar, Earthstar Geographics",
 }).addTo(map);
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
-  maxZoom: 17,
+  maxZoom: 17, noWrap: true,
 }).addTo(map);
+// Single non-wrapping world: never render tiles outside the world's own
+// [0 .. 2^z-1] grid (beyond that Esri returns "map data not available"
+// placeholder tiles). Everything outside the world stays solid black.
+function pruneOutOfWorldTiles() {
+  const z = Math.round(map.getZoom());
+  const maxT = Math.pow(2, z) - 1;
+  document.querySelectorAll(".leaflet-tile-pane img").forEach((img) => {
+    const m = (img.src || "").match(/tile\/(\d+)\/(-?\d+)\/(-?\d+)$/);
+    if (!m) return;
+    const y = +m[2], x = +m[3];
+    if (x < 0 || x > maxT || y < 0 || y > maxT) img.remove();
+  });
+}
+document.querySelectorAll(".leaflet-tile-pane").forEach((pane) => {
+  pane.addEventListener("load", pruneOutOfWorldTiles, true);
+  pane.addEventListener("error", pruneOutOfWorldTiles, true);
+});
+map.on("moveend zoomend", pruneOutOfWorldTiles);
+window.addEventListener("resize", () => {
+  const mz = minZoomBase();
+  if (map.getZoom() < mz) map.setZoom(mz, { animate: false });
+  if (map.options.minZoom !== mz) map.setMinZoom(mz);
+});
 
-let layer = L.layerGroup().addTo(map);
+const overviewLayer = L.layerGroup();
+const markerLayer = L.layerGroup();
+const highlightLayer = L.layerGroup();
 
-function badge(cls) {
-  const c = COLORS[cls] || COLORS.unclassified;
-  return '<span class="badge" style="background:' + c + '">' + esc(cls) + "</span>";
+// ---------------------------------------------------------------------------
+// Country geometry + point-in-polygon (from vendored world-atlas 110m).
+// Geometry is reference data only -- every count is derived from the real
+// /api/hotspots.geojson features. Nothing is hardcoded.
+// ---------------------------------------------------------------------------
+let countries = [];        // { id, name, bounds, rings }
+let hotspotToCountry = new Map();
+let countryCounts = {};    // iso -> { cls: n, total }
+const pts = [];            // [{lat, lon, cls, iso}, ...] view of current filter
+
+function pointInRing(x, y, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+/* polygons: [{ outer, holes }] — a point is in the country if it is inside
+   any outer ring and not inside any of that polygon's holes. */
+function pointInPoly(x, y, polys) {
+  for (const p of polys) {
+    if (!pointInRing(x, y, p.outer)) continue;
+    let inHole = false;
+    for (const h of p.holes) if (pointInRing(x, y, h)) { inHole = true; break; }
+    if (!inHole) return true;
+  }
+  return false;
+}
+function centroidOf(polys) {
+  let a = 0, cx = 0, cy = 0;
+  for (const p of polys) {
+    const ring = p.outer;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      const f = xi * yj - xj * yi;
+      a += f; cx += (xi + xj) * f; cy += (yi + yj) * f;
+    }
+  }
+  a *= 0.5;
+  if (a === 0) return null;
+  return [cx / (6 * a), cy / (6 * a)];
+}
+function polysOf(g) {
+  let polys = [];
+  if (g.type === "Polygon") polys.push(g.coordinates);
+  else if (g.type === "MultiPolygon") polys = g.coordinates;
+  return polys.map((p) => ({ outer: p[0], holes: p.slice(1) }));
+}
+function countryFor(lat, lon) {
+  for (const ctry of countries) {
+    if (ctry.bounds.contains([lat, lon]) && pointInPoly(lon, lat, ctry.polys)) return ctry;
+  }
+  return null;
+}
+let countryFeatures = [];
+function prepCountries(fc) {
+  countryFeatures = fc.features.map((f) => ({
+    type: "Feature", id: f.id, properties: f.properties, geometry: f.geometry,
+  }));
+  countries = countryFeatures.map((f) => {
+    const polys = polysOf(f.geometry);
+    const b = L.latLngBounds([]);
+    for (const p of polys) for (const [lon, lat] of p.outer) b.extend([lat, lon]);
+    return { id: String(f.id), name: f.properties.name || f.id, bounds: b, polys };
+  });
 }
 
-function renderFeatures(data) {
-  layer.clearLayers();
-  if (!data || !data.features || data.features.length === 0) {
-    L.popup({ maxWidth: 400 }).setLatLng(map.getCenter())
-      .setContent('<div class="p">No hotspots for this filter.</div>').openOn(map);
-    return;
-  }
-  for (const f of data.features) {
+// ---------------------------------------------------------------------------
+// Data (real API only).
+// ---------------------------------------------------------------------------
+let hotspotsAll = [];
+let currentFilter = "*";
+
+function fetchHotspots(keys) {
+  const q = keys.map((k) => "class=" + encodeURIComponent(k)).join("&");
+  return fetch("/api/hotspots.geojson?" + q + "&limit=200000")
+    .then((r) => r.json()).then((j) => j.features || []);
+}
+
+function buildCountryData() {
+  hotspotToCountry = new Map();
+  countryCounts = {};
+  pts.length = 0;
+  for (const f of hotspotsAll) {
     const p = f.properties;
-    const cls = p.class || "unclassified";
-    const color = COLORS[cls] || COLORS.unclassified;
     const [lon, lat] = f.geometry.coordinates;
-    L.circleMarker([lat, lon], {
-      radius: 6, color: "#fff", weight: 1, fillColor: color, fillOpacity: 0.9,
-    })
-      .addTo(layer)
-      .bindPopup(
-        "<b>" + badge(cls) + "</b>" +
-        '<div class="p"><b>FRP:</b> ' + (p.frp == null ? "—" : p.frp.toFixed(2)) + "</div>" +
-        '<div class="p"><b>Date/time:</b> ' + (p.acq_datetime || "—") + "</div>" +
-        '<div class="p"><b>Confidence:</b> ' + esc(p.confidence || "—") + "</div>" +
-        '<div class="p"><b>Nearest facility:</b> ' + esc(p.nearest_facility_name || p.nearest_facility_type || "—") + "</div>" +
-        '<div class="p"><b>Distance:</b> ' + FMT_M(p.distance_m) + "</div>" +
-        '<div class="p"><b>Persistence:</b> ' + (p.persistence_score == null ? "—" : p.persistence_score.toFixed(2)) +
-        " (" + (p.detections_7d ?? 0) + " in 7d)</div>"
-      )
-      .on("click", () => loadDetail(p.id));
+    const c = countryFor(lat, lon);
+    const iso = c ? c.id : null;
+    hotspotToCountry.set(p.id, iso);
+    pts.push({ id: p.id, lat, lon, cls: p.class || "unknown", frp: p.frp, iso });
+    if (iso) {
+      const cc = countryCounts[iso] || (countryCounts[iso] = {});
+      cc[p.class || "unknown"] = (cc[p.class || "unknown"] || 0) + 1;
+      cc.total = (cc.total || 0) + 1;
+    }
   }
-  if (data.features.length === 1) map.fitBounds(layer.getBounds(), { maxZoom: 9 });
+  return pts;
 }
 
-const INDUSTRIAL_CLASSES = ["industrial_fire", "persistent_industrial_source", "gas_flare"];
+// ---------------------------------------------------------------------------
+// Overview: choropleth countries + clickable labels (+ leader lines).
+// ---------------------------------------------------------------------------
+let choroplethLayer = L.geoJSON(null, {
+  interactive: true,
+  bubblingMouseEvents: false,
+  onEachFeature: (f, layer) => {
+    layer.on("click", () => {
+      const id = String(f.id);
+      if (id === selectedCountry) clearCountry(true);
+      else selectCountry(id);
+    });
+  },
+});
+let maxSqrt = 1;
+let labels = [];
+let outlineLayer = L.geoJSON(null, { interactive: false });
 
-function loadHotspots(cls) {
-  // "*" (or no selection) shows all industrially-relevant hotspot classes.
-  // The database stores only industrially-screened detections; there is no
-  // "all raw fires" view by design.
-  const classes = (cls === "*" || !cls) ? INDUSTRIAL_CLASSES : [cls];
-  const q = classes.map(c => "class=" + encodeURIComponent(c)).join("&");
-  const url = "/api/hotspots.geojson" + (q ? "?" + q : "");
-  fetch(url).then(r => r.json()).then(renderFeatures).catch(err => console.error(err));
+function setCountryOutline(iso) {
+  outlineLayer.clearLayers();
+  if (!iso) return;
+  const f = countryFeatures.find((f2) => String(f2.id) === String(iso));
+  if (f) {
+    outlineLayer.addData(f);
+    outlineLayer.setStyle({ color: "rgba(255,185,120,0.95)", weight: 2.4, fill: false, fillOpacity: 0 });
+  }
+  if (!outlineLayer._map) outlineLayer.addTo(map);
+  outlineLayer.bringToFront();
 }
 
+function buildCountryStyle(f) {
+  const cc = countryCounts[f.id];
+  const t = cc ? Math.sqrt(cc.total) / (maxSqrt || 1) : 0;
+  if (String(f.id) === String(selectedCountry)) {
+    return { color: "rgba(255,190,130,0.95)", weight: 1.6,
+      fillColor: "rgba(224,120,62,0.16)", fillOpacity: 0.9 };
+  }
+  return {
+    color: t > 0 ? "rgba(232, 168, 108," + (0.22 + 0.5 * t).toFixed(3) + ")" : "rgba(230,190,150,0.10)",
+    weight: t > 0 ? 1.1 : 0.4,
+    fillColor: "rgba(224,120,62," + (0.03 + 0.4 * t).toFixed(3) + ")",
+    fillOpacity: t > 0 ? 0.9 : 0,
+  };
+}
+
+function anchorPointFor(ctry) {
+  const c = centroidOf(ctry.polys);
+  if (c && pointInPoly(c[0], c[1], ctry.polys)) return { lon: c[0], lat: c[1] };
+  // Concave country: pull the label in to a representative inland point.
+  let ring = ctry.polys[0].outer;
+  for (const p of ctry.polys) if (p.outer.length > ring.length) ring = p.outer;
+  let sx = 0, sy = 0;
+  for (const [lon, lat] of ring) { sx += lon; sy += lat; }
+  return { lon: sx / ring.length, lat: sy / ring.length };
+}
+
+function renderOverview() {
+  if (!countries.length) return;
+  maxSqrt = 1;
+  for (const k of Object.keys(countryCounts)) {
+    maxSqrt = Math.max(maxSqrt, Math.sqrt(countryCounts[k].total || 0));
+  }
+  choroplethLayer.clearLayers();
+  if (Object.keys(countryCounts).length) {
+    choroplethLayer.addData({ type: "FeatureCollection", features: countryFeatures });
+    choroplethLayer.setStyle(buildCountryStyle);
+  }
+  overviewLayer.addLayer(choroplethLayer);
+
+  for (const lb of labels) {
+    overviewLayer.removeLayer(lb.marker);
+    if (lb.line) overviewLayer.removeLayer(lb.line);
+  }
+  labels = [];
+  for (const ctry of countries) {
+    const cc = countryCounts[ctry.id];
+    if (!cc || !cc.total) continue;
+    const a = anchorPointFor(ctry);
+    const icon = L.divIcon({
+      className: "cl-label-wrap",
+      html: '<div class="cl-label' + (selectedCountry === ctry.id ? " sel" : "") +
+        '">' + esc(ctry.name) + '<span class="cl-n">' + cc.total + "</span></div>",
+      iconSize: null,
+    });
+    const m = L.marker([a.lat, a.lon], { icon, interactive: true, keyboard: false });
+    m.on("click", () => {
+      const id = String(ctry.id);
+      if (id === selectedCountry) clearCountry(true);
+      else selectCountry(id);
+    });
+    const c = centroidOf(ctry.polys);
+    let line = null;
+    if (c && (Math.abs(c[0] - a.lon) > 0.4 || Math.abs(c[1] - a.lat) > 0.4)) {
+      line = L.polyline([[c[1], c[0]], [a.lat, a.lon]], {
+        color: "rgba(230,190,150,0.30)", weight: 1, dashArray: "2 4", interactive: false,
+      });
+      overviewLayer.addLayer(line);
+    }
+    overviewLayer.addLayer(m);
+    labels.push({ iso: ctry.id, marker: m, line });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Anomaly points (zoom >= 6): viewport-culled, zoom-scaled markers.
+// ---------------------------------------------------------------------------
+function markRadius(z) {
+  // Small dots at overview that grow as you zoom in; clustering at dense
+  // sites is fine at low zoom.
+  return Math.min(13, 2.4 + z * 0.45);
+}
+let lastHighlight = null;
+
+function buildMarkers() {
+  markerLayer.clearLayers();
+  const bounds = map.getBounds().pad(0.25);
+  const iso = hotspotsRawView ? null : selectedCountry;
+  const z = map.getZoom();
+  for (const pt of pts) {
+    if (iso && pt.iso !== iso) continue;
+    if (!bounds.contains([pt.lat, pt.lon])) continue;
+    const r = markRadius(z);
+    L.circleMarker([pt.lat, pt.lon], {
+      radius: r, stroke: false,
+      fillColor: COLORS[pt.cls] || "#9a968d", fillOpacity: 0.95,
+      className: "hs hs-" + (pt.cls || "unknown"),
+    }).addTo(markerLayer)
+      .bindPopup(popupHTML(pt))
+      .on("click", () => selectHotspot(pt, true));
+  }
+  applyHighlight();
+}
+function applyHighlight() {
+  highlightLayer.clearLayers();
+  if (lastHighlight && markerLayer._map) {
+    const r = markRadius(map.getZoom()) + 5;
+    L.circleMarker([lastHighlight.lat, lastHighlight.lon], {
+      radius: r, color: "#ffbe78", weight: 2, fillColor: "transparent", fillOpacity: 0,
+    }).addTo(highlightLayer);
+  }
+}
+
+function popupHTML(pt) {
+  const p = hotspotsById[pt.id] && hotspotsById[pt.id].properties || {};
+  return "<b>" + badge(p.class) + "</b>" +
+    '<div class="p"><b>FRP:</b> ' + (p.frp == null ? "—" : p.frp.toFixed(2)) + "</div>" +
+    '<div class="p"><b>Date/time:</b> ' + esc(p.acq_datetime || "—") + "</div>" +
+    '<div class="p"><b>Confidence:</b> ' + esc(p.confidence || "—") + "</div>" +
+    '<div class="p"><b>Nearest facility:</b> ' + esc(p.nearest_facility_name || p.nearest_facility_type || "—") + "</div>" +
+    '<div class="p"><b>Distance:</b> ' + FMT_M(p.distance_m) + "</div>" +
+    '<div class="p"><b>Persistence:</b> ' + (p.persistence_score == null ? "—" : p.persistence_score.toFixed(2)) +
+    " (" + (p.detections_7d ?? 0) + " in 7d)</div>";
+}
+let hotspotsById = {};
+
+// ---------------------------------------------------------------------------
+// Mode + interactions.
+// ---------------------------------------------------------------------------
+let selectedCountry = null;
+let selectedPts = null;
+let hotspotsRawView = false;
+
+function updateMode() {
+  const overview = map.getZoom() < OVERVIEW_ZOOM;
+  if (hotspotsRawView) {
+    // "All anomalies": every marker on screen, no country borders/names.
+    if (overviewLayer._map) overviewLayer.remove();
+    if (!markerLayer._map) markerLayer.addTo(map);
+    if (highlightLayer._map) highlightLayer.remove();
+    buildMarkers();
+  } else if (overview) {
+    if (!overviewLayer._map) overviewLayer.addTo(map);
+    if (selectedCountry) {
+      // While a country is selected, keep its hotspots visible on the
+      // overview as small zoom-scaled dots (no auto-zoom on click).
+      if (!markerLayer._map) markerLayer.addTo(map);
+      if (highlightLayer._map) highlightLayer.remove();
+      buildMarkers();
+    } else {
+      if (markerLayer._map) markerLayer.remove();
+      if (highlightLayer._map) highlightLayer.remove();
+    }
+  } else {
+    if (overviewLayer._map) overviewLayer.remove();
+    if (!markerLayer._map) markerLayer.addTo(map);
+    if (!highlightLayer._map) highlightLayer.addTo(map);
+    buildMarkers();
+  }
+}
+
+function selectCountry(iso) {
+  selectedCountry = String(iso);
+  selectedPts = pts.filter((p) => p.iso === selectedCountry);
+  renderCountryPanel();
+  renderOverview();
+  setCountryOutline(selectedCountry);
+  updateMode();
+}
+function closeCountryPanel() {
+  const el = document.getElementById("country");
+  el.className = "";
+  el.innerHTML = "";
+}
+function clearCountry(noFly) {
+  selectedCountry = null;
+  selectedPts = null;
+  closeCountryPanel();
+  if (!noFly) {
+    map.flyTo([24, 18], Math.max(map.options.minZoom, OVERVIEW_ZOOM - 2), { duration: 0.55 });
+  }
+  renderOverview();
+  setCountryOutline(null);
+  updateMode();
+}
+
+function renderCountryPanel() {
+  const cc = countryCounts[selectedCountry] || {};
+  const name = (countries.find((c) => c.id === selectedCountry) || {}).name || "Unmapped region";
+  const list = selectedPts || [];
+  const rows = list.slice().sort((a, b) => (b.frp || 0) - (a.frp || 0)).map((pt) => {
+    const p = hotspotsById[pt.id].properties;
+    return '<div class="co-row" data-id="' + pt.id + '">' + dot(pt.cls) +
+      '<span class="r-t">' + esc(p.nearest_facility_name || p.nearest_facility_type || "Anomaly") + "</span>" +
+      '<span class="r-m">' + FMT_M(p.distance_m) + "</span></div>";
+  }).join("");
+  document.getElementById("country").innerHTML =
+    '<div class="co-close" id="co-close">← World view</div>' +
+    "<h2>" + esc(name) + "</h2>" +
+    '<div class="co-iso">ACTIVE ANOMALIES IN COUNTRY</div>' +
+    '<div class="co-total"><b>' + cc.total + "</b> active " +
+      (cc.total === 1 ? "anomaly" : "anomalies") + "</div>" +
+    '<div class="co-counts">' +
+    CLASSES.map((k) => '<div class="cc"><div class="n">' + (cc[k] || 0) + "</div><div class=\"l\">" +
+      (k === "industrial_fire" ? "Industrial fire" : k === "persistent_industrial_source" ? "Persistent source" : k === "gas_flare" ? "Gas flare" : "Other industrial anomalies") +
+      "</div></div>").join("") +
+    "</div>" +
+    '<div class="co-list"><h3>Anomalies (' + list.length + ")</h3>" +
+    (rows || '<p class="empty">No active anomalies.</p>') + "</div>";
+  document.getElementById("country").className = "visible";
+  document.getElementById("co-close").addEventListener("click", clearCountry);
+  document.querySelectorAll(".co-row").forEach((el) => {
+    el.addEventListener("click", () => {
+      const id = el.dataset.id;
+      const pt = pts.find((p2) => String(p2.id) === id);
+      if (pt) selectHotspot(pt, true);
+    });
+  });
+}
+
+function selectHotspot(pt, withZoom) {
+  lastHighlight = pt;
+  if (withZoom) map.flyTo([pt.lat, pt.lon], Math.max(map.getZoom(), 12), { duration: 0.5 });
+  setTimeout(() => {
+    applyHighlight();
+    map.closePopup();
+    const layer = markerLayer.getLayers().find((l) => l._latlng && l._latlng.lat === pt.lat && l._latlng.lng === pt.lon);
+    if (layer) layer.openPopup();
+  }, 560);
+  loadDetail(pt.id);
+}
+
+// ---------------------------------------------------------------------------
+// Detail (existing project functionality, reuse unchanged).
+// ---------------------------------------------------------------------------
 function loadDetail(id) {
-  fetch("/api/hotspots/" + id).then(r => r.json()).then(d => {
+  fetch("/api/hotspots/" + id).then((r) => r.json()).then((d) => {
     const e = d.enrichment || {};
     const rows = [
+      ["Classification", DISPLAY[e.class] || "—"],
       ["Source", esc(d.source + " / " + d.satellite)],
       ["Date/time", esc(d.acq_datetime || "—")],
       ["FRP", d.frp == null ? "—" : d.frp.toFixed(2)],
@@ -216,10 +701,10 @@ function loadDetail(id) {
       ["FRP vs nearby", e.frp_vs_nearby == null ? "—" : e.frp_vs_nearby.toFixed(2)],
     ];
     document.getElementById("detail").innerHTML =
-      "<h2>" + badge(e.class || "unclassified") + "</h2>" +
-      rows.map(r => '<div class="row"><span>' + r[0] + "</span><span>" + r[1] + "</span></div>").join("") +
+      "<h2>" + badge(e.class) + "</h2>" +
+      rows.map((r) => '<div class="row"><span>' + r[0] + "</span><span>" + r[1] + "</span></div>").join("") +
       "<h2>Why</h2><ul class='reasons'>" +
-      (e.reasons && e.reasons.length ? e.reasons.map(r => "<li>" + esc(r) + "</li>").join("") : "<li>no reasons</li>") +
+      (e.reasons && e.reasons.length ? e.reasons.map((r) => "<li>" + esc(r) + "</li>").join("") : "<li>no reasons</li>") +
       "</ul>";
   }).catch(() => {
     document.getElementById("detail").innerHTML = '<p class="empty">Could not load detail.</p>';
@@ -227,28 +712,80 @@ function loadDetail(id) {
 }
 
 function loadStats() {
-  fetch("/api/stats").then(r => r.json()).then(s => {
-    const bc = s.by_class || {};
-    const list = Object.entries(bc).map(([k, v]) => k + ": " + v).join(" · ");
-    document.getElementById("stats").innerHTML =
-      "<b>" + s.total_hotspots + "</b> hotspots · <b>" + s.total_facilities + "</b> industrial facilities<br>" +
-      (list || "no classifications yet");
-  }).catch(() => {
-    document.getElementById("stats").textContent = "Stats unavailable.";
-  });
+  fetch("/api/stats").then((r) => r.json()).then((s) => {
+    window._facilityCount = s.total_facilities;
+  }).catch(() => {});
 }
 
-document.querySelectorAll(".filters button").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".filters button").forEach(b => b.classList.remove("active"));
+function renderStats() {
+  const byC = {};
+  for (const pt of pts) byC[pt.cls] = (byC[pt.cls] || 0) + 1;
+  const n = pts.length;
+  const filtName = currentFilter === "*" ? "all industrial classes" : DISPLAY[currentFilter];
+  document.getElementById("stats").innerHTML =
+    "<b>" + n + "</b> active " + (n === 1 ? "anomaly" : "anomalies") + " · <b>" +
+    (window._facilityCount ?? "—") + "</b> industrial facilities<br>" +
+    '<span class="cls">' + CLASSES.map((k) => DISPLAY[k] + " <i>" + (byC[k] || 0) + "</i>").join(" · ") + "</span>" +
+    '<br>filter: ' + esc(filtName);
+}
+
+// ---------------------------------------------------------------------------
+// Boot.
+// ---------------------------------------------------------------------------
+document.querySelectorAll(".filters button").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    document.querySelectorAll(".filters button").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
-    loadHotspots(btn.dataset.class);
+    currentFilter = btn.dataset.filter;
+    const keys = currentFilter === "*" ? CLASSES : [currentFilter];
+    const fc = await fetchHotspots(keys);
+    hotspotsAll = fc;
+    hotspotsById = {};
+    for (const f of hotspotsAll) hotspotsById[f.properties.id] = f;
+    buildCountryData();
+    selectedCountry = null;
+    selectedPts = null;
+    closeCountryPanel();
+    lastHighlight = null;
+    renderStats();
+    renderOverview();
+    setCountryOutline(null);
+    updateMode();
   });
 });
+document.querySelector('.filters button[data-filter="*"]').classList.add("active");
 
-loadStats();
-document.querySelector('.filters button[data-class="*"]').classList.add("active");
-loadHotspots("*");
+map.on("moveend zoomend", updateMode);
+// Clicking the map background (not a country/hotspot) clears the selection.
+map.on("click", () => {
+  if (selectedCountry) clearCountry(true);
+});
+
+document.getElementById("pts-toggle").addEventListener("click", () => {
+  hotspotsRawView = !hotspotsRawView;
+  document.getElementById("pts-toggle").classList.toggle("on", hotspotsRawView);
+  if (hotspotsRawView) {
+    selectedCountry = null;
+    selectedPts = null;
+    lastHighlight = null;
+    closeCountryPanel();
+    setCountryOutline(null);
+    renderOverview();
+  }
+  updateMode();
+});
+
+(async function boot() {
+  const t = await fetch("/assets/vendor/countries-110m.json").then((r) => r.json());
+  prepCountries(t);
+  await Promise.all([fetchHotspots(CLASSES).then((fc) => { hotspotsAll = fc; }), loadStats()]);
+  hotspotsById = {};
+  for (const f of hotspotsAll) hotspotsById[f.properties.id] = f;
+  buildCountryData();
+  renderStats();
+  renderOverview();
+  updateMode();
+})();
 </script>
 </body>
 </html>
